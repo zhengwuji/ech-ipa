@@ -1,4 +1,5 @@
 import SwiftUI
+import ECHClient
 
 @available(iOS 14.0, *)
 struct ContentView: View {
@@ -6,7 +7,7 @@ struct ContentView: View {
     @State private var serverAddress = "example.com:443"
     @State private var listenAddress = "127.0.0.1:30000"
     @State private var token = ""
-    @State private var preferredIP = "saas.sin.fan"
+    @State private var preferredIP = ""
     @State private var dohServer = "dns.alidns.com/dns-query"
     @State private var echDomain = "cloudflare-ech.com"
     @State private var routingMode = 1 // 0=全局, 1=跳过中国大陆, 2=不改变
@@ -16,13 +17,37 @@ struct ContentView: View {
     @State private var logText = ""
     @State private var showAdvanced = false
     
-    // 代理管理器
-    @StateObject private var proxyManager = ProxyManager()
+    // ECH 客户端
+    private var echClient: EchclientECHClient?
+    
+    init() {
+        echClient = EchclientNewECHClient()
+    }
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
+                    // 状态卡片
+                    VStack(spacing: 8) {
+                        HStack {
+                            Circle()
+                                .fill(isRunning ? Color.green : Color.red)
+                                .frame(width: 12, height: 12)
+                            Text(isRunning ? "代理运行中" : "代理已停止")
+                                .font(.headline)
+                            Spacer()
+                        }
+                        if isRunning {
+                            Text("SOCKS5: \(listenAddress)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
+                    .background(isRunning ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+                    .cornerRadius(12)
+                    
                     // 基础配置
                     VStack(alignment: .leading, spacing: 12) {
                         Text("基础配置")
@@ -30,7 +55,7 @@ struct ContentView: View {
                             .foregroundColor(.primary)
                         
                         VStack(spacing: 10) {
-                            ConfigField(label: "服务地址", text: $serverAddress, placeholder: "example.com:443")
+                            ConfigField(label: "服务地址", text: $serverAddress, placeholder: "your-worker.workers.dev:443")
                             ConfigField(label: "监听地址", text: $listenAddress, placeholder: "127.0.0.1:30000")
                             ConfigField(label: "身份令牌", text: $token, placeholder: "可选")
                         }
@@ -43,28 +68,11 @@ struct ContentView: View {
                     // 高级选项
                     DisclosureGroup("高级选项", isExpanded: $showAdvanced) {
                         VStack(spacing: 10) {
-                            ConfigField(label: "优选IP", text: $preferredIP, placeholder: "saas.sin.fan")
+                            ConfigField(label: "优选IP", text: $preferredIP, placeholder: "留空自动解析")
                             ConfigField(label: "DOH服务器", text: $dohServer, placeholder: "dns.alidns.com/dns-query")
                             ConfigField(label: "ECH域名", text: $echDomain, placeholder: "cloudflare-ech.com")
                         }
                         .padding(.top, 10)
-                    }
-                    .padding()
-                    .background(Color(UIColor.systemBackground))
-                    .cornerRadius(12)
-                    .shadow(radius: 2)
-                    
-                    // 代理模式
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("代理模式")
-                            .font(.headline)
-                        
-                        Picker("模式", selection: $routingMode) {
-                            Text("全局代理").tag(0)
-                            Text("跳过中国大陆").tag(1)
-                            Text("不改变代理").tag(2)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
                     }
                     .padding()
                     .background(Color(UIColor.systemBackground))
@@ -169,13 +177,8 @@ struct ContentView: View {
         .onAppear {
             loadConfig()
             appendLog("[系统] ECH Workers 已启动")
-            appendLog("[系统] 版本: 1.2.0")
-            appendLog("[提示] 配置代理后，在系统设置中手动配置SOCKS5代理")
-        }
-        .onReceive(proxyManager.$logOutput) { output in
-            if !output.isEmpty {
-                appendLog(output)
-            }
+            appendLog("[系统] 版本: 1.2.0 (完整ECH功能)")
+            appendLog("[提示] 填写服务器地址后点击启动代理")
         }
     }
     
@@ -184,7 +187,7 @@ struct ContentView: View {
         serverAddress = defaults.string(forKey: "serverAddress") ?? "example.com:443"
         listenAddress = defaults.string(forKey: "listenAddress") ?? "127.0.0.1:30000"
         token = defaults.string(forKey: "token") ?? ""
-        preferredIP = defaults.string(forKey: "preferredIP") ?? "saas.sin.fan"
+        preferredIP = defaults.string(forKey: "preferredIP") ?? ""
         dohServer = defaults.string(forKey: "dohServer") ?? "dns.alidns.com/dns-query"
         echDomain = defaults.string(forKey: "echDomain") ?? "cloudflare-ech.com"
         routingMode = defaults.integer(forKey: "routingMode")
@@ -211,23 +214,39 @@ struct ContentView: View {
         
         saveConfig()
         
-        let config = ProxyConfig(
-            server: serverAddress,
-            listen: listenAddress,
-            token: token.isEmpty ? nil : token,
-            preferredIP: preferredIP,
-            dohServer: dohServer,
-            echDomain: echDomain,
-            routingMode: routingMode
+        // 配置 ECH 客户端
+        echClient?.configure(
+            serverAddress,
+            listenAddr: listenAddress,
+            token: token,
+            serverIP: preferredIP,
+            dnsServer: dohServer,
+            echDomain: echDomain
         )
         
-        proxyManager.start(config: config)
+        // 设置日志回调
+        echClient?.setLogCallback { message in
+            DispatchQueue.main.async {
+                self.appendLog(message ?? "")
+            }
+        }
+        
+        // 启动代理
+        var error: NSError?
+        echClient?.start(&error)
+        
+        if let error = error {
+            appendLog("[错误] 启动失败: \(error.localizedDescription)")
+            return
+        }
+        
         isRunning = true
         appendLog("[系统] 代理已启动")
+        appendLog("[系统] ECH 加密已启用")
     }
     
     func stopProxy() {
-        proxyManager.stop()
+        echClient?.stop()
         isRunning = false
         appendLog("[系统] 代理已停止")
     }

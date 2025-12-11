@@ -31,32 +31,30 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23'
           cache: false
       
-      - name: Build ech-workers binary for iOS
+      - name: Install gomobile
         run: |
-          echo "编译 ech-workers 为 iOS (darwin/arm64)..."
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+          echo "✅ gomobile 安装完成"
+      
+      - name: Build ECHClient Framework with gomobile
+        run: |
+          cd swift-ios/echclient
           
-          # 复制 go.mod
-          cp ech-wk-package/src/go.mod ./go.mod
-          cp ech-wk-package/src/go.sum ./go.sum 2>/dev/null || true
-          
-          # 整理依赖
+          # 下载依赖
           go mod tidy
           go mod download
           
-          # 编译为 iOS arm64
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o ech-workers-ios -ldflags="-s -w" ech-workers.go
+          # 使用 gomobile 构建 iOS framework
+          echo "正在构建 ECHClient.xcframework..."
+          gomobile bind -target=ios -o ../ECHClient.xcframework .
           
-          # 复制到Swift项目
-          mkdir -p swift-ios/Resources
-          cp ech-workers-ios swift-ios/Resources/ech-workers
-          chmod +x swift-ios/Resources/ech-workers
-          
-          echo "✅ ech-workers编译完成"
-          ls -lh swift-ios/Resources/ech-workers
-      
+          echo "✅ ECHClient.xcframework 构建完成"
+          ls -la ../ECHClient.xcframework/
       
       - name: Setup project structure
         run: |
@@ -101,18 +99,27 @@ jobs:
             echo "✅ 设置可执行权限"
           fi
           
-          # 复制 ech-workers 到 .app 根目录 (不放在 Resources 里，避免 TrollStore 问题)
-          if [ -d Resources ] && [ -n "$APP_PATH" ]; then
-            echo "复制 ech-workers..."
-            cp Resources/ech-workers "$APP_PATH/ech-workers"
-            chmod +x "$APP_PATH/ech-workers"
-            echo "✅ 设置 ech-workers 可执行权限"
+          # 复制 ECHClient.xcframework 到 .app/Frameworks
+          if [ -d ECHClient.xcframework ] && [ -n "$APP_PATH" ]; then
+            echo "复制 ECHClient.xcframework..."
+            mkdir -p "$APP_PATH/Frameworks"
+            # 找到 ios-arm64 的 framework
+            if [ -d "ECHClient.xcframework/ios-arm64/ECHClient.framework" ]; then
+              cp -r "ECHClient.xcframework/ios-arm64/ECHClient.framework" "$APP_PATH/Frameworks/"
+              echo "✅ ECHClient.framework 已复制"
+            fi
           fi
           
           # 复制.app到当前目录
           if [ -n "$APP_PATH" ]; then
             cp -r "$APP_PATH" ./ECHWorkers.app
           fi
+          
+          # 显示最终 app 大小
+          echo "App 内容:"
+          ls -la ./ECHWorkers.app/
+          echo "App 总大小:"
+          du -sh ./ECHWorkers.app/
       
       - name: Package IPA
         run: |
@@ -170,14 +177,15 @@ jobs:
           body: |
             # ECH Workers - Swift原生iOS版本
             
-            **✅ 原生Swift开发 - 稳定不闪退**
+            **✅ 完整ECH功能 + 原生Swift界面**
             
             ## 特性
             
             - ✅ 原生SwiftUI界面
-            - ✅ 完全稳定，无闪退问题
+            - ✅ 完整ECH加密支持 (Go 1.23)
+            - ✅ WebSocket隧道
+            - ✅ SOCKS5代理
             - ✅ TrollStore完美支持
-            - ✅ 所有功能完整实现
             
             ## 安装方法
             
@@ -205,7 +213,7 @@ jobs:
             ---
             
             **版本**: 1.2.0-Swift
-            **最低iOS版本**: 12.0
+            **最低iOS版本**: 14.0
             **架构**: arm64
           files: |
             ECHWorkers-Swift-unsigned.ipa

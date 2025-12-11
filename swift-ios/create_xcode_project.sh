@@ -12,6 +12,13 @@ TEAM_ID=""
 # 创建项目目录结构
 mkdir -p "${PROJECT_NAME}.xcodeproj"
 
+# 检查 ECHClient.xcframework 是否存在
+HAS_FRAMEWORK=0
+if [ -d "ECHClient.xcframework" ]; then
+    HAS_FRAMEWORK=1
+    echo "找到 ECHClient.xcframework"
+fi
+
 # 生成project.pbxproj文件
 cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 // !$*UTF8*$!
@@ -25,15 +32,30 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 /* Begin PBXBuildFile section */
 		A1000001000000000000001 /* ECHWorkersApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000001 /* ECHWorkersApp.swift */; };
 		A1000002000000000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002000000000000001 /* ContentView.swift */; };
-		A1000003000000000000001 /* ProxyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003000000000000001 /* ProxyManager.swift */; };
+		A1000004000000000000001 /* ECHClient.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000005000000000000001 /* ECHClient.xcframework */; };
+		A1000005000000000000001 /* ECHClient.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A2000005000000000000001 /* ECHClient.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A4000002000000000000001 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A1000005000000000000001 /* ECHClient.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A3000001000000000000001 /* ECHWorkers.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ECHWorkers.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2000001000000000000001 /* ECHWorkersApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ECHWorkersApp.swift; sourceTree = "<group>"; };
 		A2000002000000000000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		A2000003000000000000001 /* ProxyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyManager.swift; sourceTree = "<group>"; };
 		A2000004000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000005000000000000001 /* ECHClient.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = ECHClient.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +63,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1000004000000000000001 /* ECHClient.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -52,6 +75,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 			children = (
 				A5000002000000000000001 /* ECHWorkers */,
 				A5000003000000000000001 /* Products */,
+				A5000004000000000000001 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -60,7 +84,6 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 			children = (
 				A2000001000000000000001 /* ECHWorkersApp.swift */,
 				A2000002000000000000001 /* ContentView.swift */,
-				A2000003000000000000001 /* ProxyManager.swift */,
 				A2000004000000000000001 /* Info.plist */,
 			);
 			path = ECHWorkers;
@@ -74,6 +97,14 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 			name = Products;
 			sourceTree = "<group>";
 		};
+		A5000004000000000000001 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A2000005000000000000001 /* ECHClient.xcframework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -84,6 +115,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 				A8000001000000000000001 /* Sources */,
 				A4000001000000000000001 /* Frameworks */,
 				A9000001000000000000001 /* Resources */,
+				A4000002000000000000001 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -144,7 +176,6 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 			files = (
 				A1000001000000000000001 /* ECHWorkersApp.swift in Sources */,
 				A1000002000000000000001 /* ContentView.swift in Sources */,
-				A1000003000000000000001 /* ProxyManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -274,6 +305,10 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)",
+				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -305,6 +340,10 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)",
+				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -360,7 +399,6 @@ echo "✅ Xcode项目创建完成"
 mkdir -p ECHWorkers
 cp ECHWorkersApp.swift ECHWorkers/ 2>/dev/null || true
 cp ContentView.swift ECHWorkers/ 2>/dev/null || true
-cp ProxyManager.swift ECHWorkers/ 2>/dev/null || true
 # Info.plist保持在根目录
 
 echo "✅ 源文件组织完成"
