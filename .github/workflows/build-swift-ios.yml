@@ -97,17 +97,13 @@ jobs:
           
           echo "使用xcodebuild构建..."
           
-          # 不使用 CODE_SIGNING_REQUIRED=NO，改用 ad-hoc 签名
+          # 允许自动签名构建，之后再处理签名
           xcodebuild \
             -project ECHWorkers.xcodeproj \
             -scheme ECHWorkers \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath ./build \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
             ONLY_ACTIVE_ARCH=NO \
             ARCHS=arm64 \
             IPHONEOS_DEPLOYMENT_TARGET=14.0 \
@@ -132,6 +128,14 @@ jobs:
             # 检查架构
             lipo -info "$APP_PATH/ECHWorkers" || echo "警告: lipo 检查失败"
             
+            # 移除原有签名并重新签名（TrollStore 兼容）
+            echo "处理代码签名..."
+            codesign --remove-signature "$APP_PATH/ECHWorkers" 2>/dev/null || true
+            codesign --remove-signature "$APP_PATH" 2>/dev/null || true
+            
+            # 移除 _CodeSignature 目录
+            rm -rf "$APP_PATH/_CodeSignature" 2>/dev/null || true
+            
             # 确保可执行权限
             chmod +x "$APP_PATH/ECHWorkers"
             echo "✅ 可执行文件验证通过"
@@ -144,6 +148,12 @@ jobs:
             # 找到 ios-arm64 的 framework
             if [ -d "ECHClient.xcframework/ios-arm64/ECHClient.framework" ]; then
               cp -r "ECHClient.xcframework/ios-arm64/ECHClient.framework" "$APP_PATH/Frameworks/"
+              
+              # 移除 framework 的签名
+              codesign --remove-signature "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" 2>/dev/null || true
+              codesign --remove-signature "$APP_PATH/Frameworks/ECHClient.framework" 2>/dev/null || true
+              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/_CodeSignature" 2>/dev/null || true
+              
               echo "✅ ECHClient.framework 已复制"
             fi
           fi
