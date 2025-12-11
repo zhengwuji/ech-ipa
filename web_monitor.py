@@ -30,13 +30,20 @@ class WebMonitor:
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
         
         try:
-            service = Service(ChromeDriverManager().install())
+            # 尝试安装Chrome驱动
+            driver_path = ChromeDriverManager().install()
+            service = Service(driver_path)
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            self.driver.set_page_load_timeout(30)  # 设置页面加载超时
         except Exception as e:
-            print(f"浏览器驱动初始化失败: {e}")
-            raise
+            error_msg = f"浏览器驱动初始化失败: {str(e)}\n\n请确保：\n1. 已安装Chrome浏览器\n2. 网络连接正常（需要下载驱动）\n3. 有足够的磁盘空间"
+            print(error_msg)
+            raise Exception(error_msg) from e
     
     def get_page_screenshot(self, save_path=None):
         """获取整个页面截图"""

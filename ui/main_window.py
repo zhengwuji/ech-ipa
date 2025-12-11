@@ -289,22 +289,63 @@ class MainWindow(QMainWindow):
     
     def start_monitoring(self):
         """开始监控"""
-        self.monitoring = True
-        self.start_btn.setText("停止监控")
-        self.start_btn.setStyleSheet("background-color: #f44336; color: white; padding: 8px;")
-        self.statusBar().showMessage("监控中...")
+        try:
+            self.monitoring = True
+            self.start_btn.setText("停止监控")
+            self.start_btn.setStyleSheet("background-color: #f44336; color: white; padding: 8px;")
+            self.statusBar().showMessage("正在初始化浏览器...")
+            
+            # 延迟初始化监控器，避免阻塞UI
+            try:
+                # 初始化监控器
+                if not self.monitor:
+                    self.statusBar().showMessage("正在初始化浏览器驱动，请稍候...")
+                    self.monitor = WebMonitor(self.config['target_url'], 
+                                             self.config.get('monitor_regions', []))
+                    self.statusBar().showMessage("浏览器初始化成功，开始监控...")
+                
+                # 立即执行一次检查（在后台线程中执行）
+                self.check_changes()
+                
+                # 启动定时器
+                interval_ms = self.config['check_interval'] * 1000
+                self.timer.start(interval_ms)
+                self.statusBar().showMessage("监控已启动")
+            
+            except Exception as e:
+                import traceback
+                error_msg = f"初始化浏览器失败: {str(e)}"
+                self.statusBar().showMessage("监控启动失败")
+                
+                # 恢复按钮状态
+                self.monitoring = False
+                self.start_btn.setText("开始监控")
+                self.start_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
+                
+                # 显示详细错误信息
+                detail_msg = f"{error_msg}\n\n可能的原因：\n1. Chrome浏览器未安装\n2. Chrome驱动下载失败\n3. 网络连接问题\n\n详细信息:\n{traceback.format_exc()}"
+                QMessageBox.critical(self, "启动监控失败", detail_msg)
+                
+                # 清理
+                if self.monitor:
+                    try:
+                        self.monitor.close()
+                    except:
+                        pass
+                    self.monitor = None
+                
+                print(detail_msg)
         
-        # 初始化监控器
-        if not self.monitor:
-            self.monitor = WebMonitor(self.config['target_url'], 
-                                     self.config.get('monitor_regions', []))
-        
-        # 立即执行一次检查
-        self.check_changes()
-        
-        # 启动定时器
-        interval_ms = self.config['check_interval'] * 1000
-        self.timer.start(interval_ms)
+        except Exception as e:
+            import traceback
+            error_msg = f"启动监控时发生未知错误: {str(e)}\n\n{traceback.format_exc()}"
+            QMessageBox.critical(self, "严重错误", error_msg)
+            print(error_msg)
+            
+            # 恢复状态
+            self.monitoring = False
+            self.start_btn.setText("开始监控")
+            self.start_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
     
     def stop_monitoring(self):
         """停止监控"""
@@ -320,13 +361,34 @@ class MainWindow(QMainWindow):
     
     def check_changes(self):
         """检查变化"""
+        if not self.monitoring:
+            return
+        
         try:
             if not self.monitor:
-                self.monitor = WebMonitor(self.config['target_url'],
-                                         self.config.get('monitor_regions', []))
+                try:
+                    self.statusBar().showMessage("正在初始化浏览器...")
+                    self.monitor = WebMonitor(self.config['target_url'],
+                                             self.config.get('monitor_regions', []))
+                except Exception as e:
+                    error_msg = f"初始化浏览器失败: {str(e)}"
+                    self.statusBar().showMessage(error_msg)
+                    self.changes_text.append(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {error_msg}\n")
+                    # 停止监控
+                    self.stop_monitoring()
+                    QMessageBox.warning(self, "监控失败", f"{error_msg}\n\n监控已停止")
+                    return
             
             # 获取当前数据
-            new_data = self.monitor.extract_product_info()
+            try:
+                self.statusBar().showMessage("正在检查变化...")
+                new_data = self.monitor.extract_product_info()
+            except Exception as e:
+                error_msg = f"提取数据失败: {str(e)}"
+                self.statusBar().showMessage(error_msg)
+                self.changes_text.append(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {error_msg}\n")
+                return
+            
             old_data = self.config.get('last_data', {})
             
             # 比较变化
@@ -336,52 +398,69 @@ class MainWindow(QMainWindow):
                 # 有变化，记录并截图
                 timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 
-                # 保存截图
-                screenshot_dir = self.config.get('screenshot_path', '')
-                os.makedirs(screenshot_dir, exist_ok=True)
-                
-                screenshot_filename = f"change_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                screenshot_path = os.path.join(screenshot_dir, screenshot_filename)
-                
-                # 获取全页截图
-                self.monitor.get_page_screenshot(screenshot_path)
-                
-                # 记录变化
-                change_log = {
-                    'timestamp': timestamp,
-                    'changes': changes,
-                    'screenshot': screenshot_filename,
-                    'all_data': new_data
-                }
-                
-                # 保存到文件
-                data_dir = self.config.get('data_path', '')
-                os.makedirs(data_dir, exist_ok=True)
-                log_file = os.path.join(data_dir, f"change_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
-                with open(log_file, 'w', encoding='utf-8') as f:
-                    json.dump(change_log, f, ensure_ascii=False, indent=2)
-                
-                # 显示在UI
-                log_text = f"\n[{timestamp}] 检测到变化:\n"
-                for change in changes:
-                    log_text += f"  - {change['field']}: {change['old_value']} -> {change['new_value']}\n"
-                log_text += f"  截图已保存: {screenshot_filename}\n"
-                
-                self.changes_text.append(log_text)
+                try:
+                    # 保存截图
+                    screenshot_dir = self.config.get('screenshot_path', '')
+                    os.makedirs(screenshot_dir, exist_ok=True)
+                    
+                    screenshot_filename = f"change_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                    screenshot_path = os.path.join(screenshot_dir, screenshot_filename)
+                    
+                    # 获取全页截图
+                    self.monitor.get_page_screenshot(screenshot_path)
+                    
+                    # 记录变化
+                    change_log = {
+                        'timestamp': timestamp,
+                        'changes': changes,
+                        'screenshot': screenshot_filename,
+                        'all_data': new_data
+                    }
+                    
+                    # 保存到文件
+                    data_dir = self.config.get('data_path', '')
+                    os.makedirs(data_dir, exist_ok=True)
+                    log_file = os.path.join(data_dir, f"change_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+                    with open(log_file, 'w', encoding='utf-8') as f:
+                        json.dump(change_log, f, ensure_ascii=False, indent=2)
+                    
+                    # 显示在UI
+                    log_text = f"\n[{timestamp}] 检测到变化:\n"
+                    for change in changes:
+                        log_text += f"  - {change['field']}: {change['old_value']} -> {change['new_value']}\n"
+                    log_text += f"  截图已保存: {screenshot_filename}\n"
+                    
+                    self.changes_text.append(log_text)
+                    self.statusBar().showMessage(f"检测到变化！时间: {timestamp}")
+                    
+                except Exception as e:
+                    error_msg = f"保存截图或日志失败: {str(e)}"
+                    self.statusBar().showMessage(error_msg)
+                    self.changes_text.append(f"\n[{timestamp}] 检测到变化，但保存失败: {error_msg}\n")
                 
                 # 更新配置中的最后数据
                 self.config['last_data'] = new_data
-                config.save_config(self.config)
+                try:
+                    config.save_config(self.config)
+                except:
+                    pass
             
             else:
                 # 无变化，只更新时间
                 self.config['last_data'] = new_data
-                config.save_config(self.config)
+                try:
+                    config.save_config(self.config)
+                except:
+                    pass
                 self.statusBar().showMessage(f"监控中... 上次检查: {datetime.now().strftime('%H:%M:%S')} (无变化)")
         
         except Exception as e:
-            self.statusBar().showMessage(f"监控出错: {str(e)}")
-            self.changes_text.append(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 错误: {str(e)}\n")
+            import traceback
+            error_msg = f"检查变化时出错: {str(e)}"
+            self.statusBar().showMessage(error_msg)
+            error_detail = f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {error_msg}\n详细信息:\n{traceback.format_exc()}\n"
+            self.changes_text.append(error_detail)
+            print(error_detail)
     
     def closeEvent(self, event):
         """窗口关闭事件"""
