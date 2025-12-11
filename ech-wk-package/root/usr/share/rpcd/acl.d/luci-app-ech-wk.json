@@ -1,0 +1,11 @@
+{
+	"luci-app-ech-wk": {
+		"description": "Grant access to ech-wk configuration",
+		"read": {
+			"uci": [ "ech-wk" ]
+		},
+		"write": {
+			"uci": [ "ech-wk" ]
+		}
+	}
+}

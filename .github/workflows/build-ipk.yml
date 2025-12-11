@@ -1,0 +1,148 @@
+name: Build OpenWrt IPK
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build IPK
+    runs-on: ubuntu-latest
+    env:
+      SDK_URL: https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Go Modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('ech-wk-package/src/go.mod') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Prepare Package
+        run: |
+          # 1. Prepare Source Code
+          mkdir -p ech-wk-package/src
+          cp ech-workers.go ech-wk-package/src/
+          
+          # 2. Initialize Go Module and Vendor
+          cd ech-wk-package/src
+          if [ ! -f go.mod ]; then
+            go mod init github.com/user/ech-wk
+          fi
+          go mod tidy
+          go mod vendor
+          cd ../..
+          
+          # 3. Move to SDK package directory
+          mkdir -p sdk/package
+          cp -r ech-wk-package sdk/package/ech-wk
+
+      - name: Cache SDK File
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: sdk.tar.zst
+          key: ${{ runner.os }}-openwrt-sdk-x86_64-${{ env.SDK_URL }}
+
+      - name: Download and Setup OpenWrt SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd aria2
+          
+          if [ ! -f sdk.tar.zst ]; then
+            aria2c -x 10 -s 10 -o sdk.tar.zst ${{ env.SDK_URL }}
+          fi
+          
+          mkdir -p sdk
+          tar --zstd -xf sdk.tar.zst -C sdk --strip-components=1
+          cd sdk
+          
+          # Update feeds with retry logic
+          for i in 1 2 3; do
+            echo "Attempt $i: Updating feeds..."
+            ./scripts/feeds update -a && break
+            echo "Retry in 10 seconds..."
+            sleep 10
+          done
+          
+          ./scripts/feeds install -a
+
+
+
+      - name: Cache OpenWrt DL
+        uses: actions/cache@v4
+        with:
+          path: sdk/dl
+          key: ${{ runner.os }}-openwrt-dl-x86_64-${{ hashFiles('**/*.mk') }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-dl-x86_64-
+
+      - name: Build Package
+        run: |
+          cd sdk
+          
+          # Package is already at sdk/package/ech-wk from Prepare step
+          
+          # Select the package (LuCI is now integrated)
+          echo "CONFIG_PACKAGE_ech-wk=m" >> .config
+          
+          # Expand configuration
+          make defconfig
+          
+          # Compile (LuCI is integrated into ech-wk package)
+          make package/ech-wk/compile V=s
+
+      - name: Collect and Debug Artifacts
+        run: |
+          echo "Listing bin directory:"
+          ls -R sdk/bin || echo "bin dir not found"
+          
+          mkdir -p artifacts_out
+          find sdk/bin -name "*.ipk" -exec cp {} artifacts_out/ \;
+          
+          echo "Collected artifacts:"
+          ls -R artifacts_out
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ech-wk-x86_64
+          path: artifacts_out/*.ipk
+
+  release:
+    name: Create Release
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate Release Tag
+        id: tag
+        run: echo "release_tag=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: Auto Build ${{ steps.tag.outputs.release_tag }}
+          files: artifacts/**/*.ipk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

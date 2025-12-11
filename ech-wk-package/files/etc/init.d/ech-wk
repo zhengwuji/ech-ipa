@@ -1,0 +1,91 @@
+#!/bin/sh /etc/rc.common
+# ECH Workers Proxy 启动脚本
+
+START=99
+STOP=10
+USE_PROCD=1
+
+NAME="ech-wk"
+PROG="/usr/bin/ech-wk"
+LOGFILE="/tmp/ech-wk.log"
+
+start_service() {
+    config_load ech-wk
+    
+    local enabled
+    config_get enabled general enabled "0"
+    
+    if [ "$enabled" != "1" ]; then
+        echo "[$(date)] 服务未启用" >> "$LOGFILE"
+        return 0
+    fi
+    
+    # 获取活动服务器配置
+    local server_section=""
+    local server_addr=""
+    local token=""
+    
+    config_foreach check_active_server server
+    
+    config_get server_addr "$server_section" server_addr ""
+    config_get token "$server_section" token ""
+    
+    if [ -z "$server_addr" ]; then
+        echo "[$(date)] 错误: 未配置服务器地址" >> "$LOGFILE"
+        return 1
+    fi
+    
+    # 获取通用配置
+    local listen_addr server_ip dns_server ech_domain
+    config_get listen_addr general listen_addr "127.0.0.1:30000"
+    config_get server_ip general server_ip ""
+    config_get dns_server general dns_server "dns.alidns.com/dns-query"
+    config_get ech_domain general ech_domain "cloudflare-ech.com"
+    
+    echo "[$(date)] [系统] 正在启动 ECH Workers Proxy..." >> "$LOGFILE"
+    echo "[$(date)] [系统] 服务器: $server_addr" >> "$LOGFILE"
+    echo "[$(date)] [系统] 监听: $listen_addr" >> "$LOGFILE"
+    
+    # 增加文件描述符限制，防止 "too many open files" 错误
+    ulimit -n 65535
+    
+    procd_open_instance
+    procd_set_param command "$PROG"
+    # 使用正确的参数名（与 Go 程序一致）
+    procd_append_param command -f "$server_addr"
+    procd_append_param command -l "$listen_addr"
+    procd_append_param command -dns "$dns_server"
+    procd_append_param command -ech "$ech_domain"
+    
+    if [ -n "$token" ]; then
+        procd_append_param command -token "$token"
+    fi
+    
+    if [ -n "$server_ip" ]; then
+        procd_append_param command -ip "$server_ip"
+    fi
+    
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_set_param respawn
+    procd_close_instance
+    
+    echo "[$(date)] [系统] ECH Workers Proxy 已启动" >> "$LOGFILE"
+}
+
+check_active_server() {
+    local section="$1"
+    local active
+    config_get active "$section" active "0"
+    if [ "$active" = "1" ]; then
+        server_section="$section"
+    fi
+}
+
+stop_service() {
+    echo "[$(date)] [系统] 正在停止 ECH Workers Proxy..." >> "$LOGFILE"
+}
+
+service_triggers() {
+    procd_add_reload_trigger "ech-wk"
+}

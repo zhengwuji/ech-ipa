@@ -1,11 +1,29 @@
-__pycache__/
-.venv/
-env/
-*.pyc
-*.pyo
-*.spec
-screenshots/
-saved_data/
-config.yaml
-version.json
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
 
+# OpenWrt SDK artifacts
+sdk/
+bin/
+build_dir/
+staging_dir/
+tmp/
+logs/
+.config
+.config.old
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Go
+go.sum

@@ -1,84 +1,249 @@
-# 网站监控与截图工具（全新版本）
+# ECH Workers Proxy - 跨平台版本
 
-> 适配 Windows 10，默认存档桌面 `jianche1` 文件夹；包含可视化 UI、区域选择、快捷键自定义、最小 60s 轮询监控，自动记录变化并截图留证。
+基于 ECH (Encrypted Client Hello) 技术的代理客户端，支持 **OpenWrt路由器**、**Windows/macOS桌面** 和 **iOS移动设备**。
 
-## 功能概览
-- 通过截图标记页面区域，OCR 识别区域文字（价格/销量/评价等）并监控变化。
-- 变化时记录时间、旧值/新值、保存对应截图与 JSON 日志。
-- 默认快捷键 F9，可自定义快捷键做手动截图留存。
-- 可自定义监控间隔（>=60s）、保存路径、截图路径。
-- Windows 10 风格 UI，支持一键选择监控区域。
-- 版本号自动递增：`1.0.00` → `9.9.99`，后回到 `1.0.00` 循环。
+## 📱 iOS版本
 
-## 安装与运行
-1) 克隆仓库  
+> **全新支持！** 现已支持iOS设备，可通过GitHub Releases下载IPA文件。
+
+### iOS安装方法
+
+**下载地址**: [GitHub Releases](https://github.com/zhengwuji/ech-ipa/releases) - 下载最新的 `ECHWorkers-unsigned.ipa`
+
+#### 方法1: AltStore（推荐）
+1. 在iOS设备上安装 [AltStore](https://altstore.io/)
+2. 下载 `ECHWorkers-unsigned.ipa` 到设备
+3. 在AltStore中打开IPA文件完成安装
+
+#### 方法2: Sideloadly
+1. 在电脑上安装 [Sideloadly](https://sideloadly.io/)
+2. 下载 `ECHWorkers-unsigned.ipa`
+3. 使用Sideloadly签名并通过USB安装到iOS设备
+
+#### 方法3: 开发者证书
+如果您有Apple开发者账户：
+1. 使用 iOS App Signer 签名IPA
+2. 通过Xcode或其他工具安装
+
+### iOS使用说明
+- 应用启动后，在"服务地址"填写您的Workers地址
+- 配置监听地址（默认127.0.0.1:30000）
+- 点击"启动代理"即可使用
+- 支持全局代理和跳过中国大陆模式
+
+---
+
+## 🖥️ OpenWrt版本（路由器）
+
+## ECH Workers Proxy for OpenWrt
+
+基于 ECH (Encrypted Client Hello) 技术的代理客户端，专为 OpenWrt 路由器设计，带有 LuCI 管理界面。
+
+
+Telegram 交流群：https://t.me/+ft-zI76oovgwNmRh
+
+## 功能特性
+
+- ✅ **一键安装** - 单个 IPK 包包含主程序和 LuCI 界面
+- ✅ **LuCI 管理界面** - 图形化配置，无需命令行
+- ✅ **多服务器管理** - 支持添加多个服务器配置，快速切换
+- ✅ **分流设置** - 全局代理 / 跳过中国大陆 / 仅代理被墙站点
+- ✅ **实时日志** - 查看运行状态，一键清空
+- ✅ **开机自启** - 支持系统启动时自动运行
+- ✅ **ECH 加密** - 加密 TLS 握手中的 SNI，保护隐私
+
+## 快速安装教程
+
+### 第一步：下载 IPK 包
+
+从 [GitHub Releases](https://github.com/zhengwuji/ech-op/releases) 下载最新版本：
+
+- **x86_64 架构**：`ech-wk_1.0.0-r1_x86_64.ipk`
+
+> 💡 只需下载这一个文件，已包含主程序和 LuCI 界面！
+
+### 第二步：安装 IPK 包
+
+**方法一：通过 LuCI 界面安装（推荐）**
+
+1. 登录 OpenWrt 管理界面
+2. 进入 **系统 → 软件包**
+3. 点击 **上传软件包**，选择下载的 IPK 文件
+4. 点击 **安装**
+
+**方法二：通过 SSH 命令安装**
+
 ```bash
-git clone https://github.com/zhengwuji/jianche1.git
-cd jianche1
+# 上传 IPK 到路由器
+scp ech-wk_1.0.0-r1_x86_64.ipk root@192.168.1.1:/tmp/
+
+# SSH 登录路由器
+ssh root@192.168.1.1
+
+# 安装
+opkg install /tmp/ech-wk_1.0.0-r1_x86_64.ipk
 ```
 
-2) 安装依赖  
+### 第三步：清除 LuCI 缓存
+
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python -m playwright install chromium
+rm -rf /tmp/luci-*
 ```
 
-> 需要安装 Tesseract（用于 OCR），Windows 可从 https://github.com/UB-Mannheim/tesseract/wiki 安装，安装后确保 `tesseract.exe` 在 PATH。
+然后刷新浏览器页面。
 
-3) 运行程序  
+### 第四步：配置服务
+
+1. 进入 **服务 → ECH Workers Proxy**
+2. 在「服务器管理」中添加服务器：
+   - **服务器名称**：自定义名称
+   - **服务地址**：`your-worker.workers.dev:443`
+   - **身份令牌**：您的 Token（可选）
+   - 勾选 **当前使用**
+3. 在「核心配置」中设置监听地址（默认 `127.0.0.1:30000`）
+4. 在「分流设置」中选择代理模式
+5. 在「服务控制」中启用服务
+6. 点击 **保存并应用**
+
+## LuCI 界面功能说明
+
+| 功能模块 | 说明 |
+|---------|------|
+| **服务控制** | 运行状态显示、启用开关、开机自启 |
+| **服务器管理** | 新增/删除服务器，选择当前使用的服务器 |
+| **核心配置** | 设置监听地址 |
+| **高级选项** | 优选IP/域名、DOH服务器、ECH域名 |
+| **分流设置** | 全局代理 / 跳过中国大陆 / 仅代理被墙站点 / 直连 |
+| **运行日志** | 实时查看日志，一键清空 |
+
+## 命令行使用
+
+如果您不使用 LuCI 界面，也可以直接通过命令行运行：
+
 ```bash
-python main.py
+ech-wk -server your-worker.workers.dev:443 -listen 127.0.0.1:30000
 ```
 
-## 使用步骤
-1. 在“监控网址”输入商品链接（例：ebay 产品页）。
-2. 设置检测间隔（最少 60s），保存路径与截图路径（默认桌面 `jianche1`）。
-3. 点击“获取页面截图并选择区域”：
-   - 程序会打开目标页截图。
-   - 在截图上框选红色矩形区域（如价格区域）。
-   - 保存后即为监控区域。
-4. 点击“开始监控”，程序会定时截图并 OCR 识别区域文本，对比上一次的值。
-5. 发生变化时：
-   - 自动保存全页截图到截图路径。
-   - 生成 JSON 日志到数据路径，包含时间、旧值/新值、截图路径、版本号。
-6. 手动截图：按快捷键（默认 F9，可在 UI 修改）会将最近一次全页截图复制一份保存。
+**参数说明：**
 
-## 重要说明
-- 最小监控间隔 60 秒，避免过于频繁请求。
-- 若 OCR 识别不准，可适当放大区域或只框选数字部分。
-- 初次运行需要下载 Playwright Chromium，时间视网络而定。
-- 生成的配置保存在 `config.yaml`；版本号保存在 `version.json`。
+| 参数 | 说明 | 默认值 |
+|-----|------|--------|
+| `-server` | 服务端地址（必需） | - |
+| `-listen` | 监听地址 | `127.0.0.1:30000` |
+| `-token` | 身份验证令牌 | - |
+| `-ip` | 指定服务端 IP（绕过 DNS） | - |
+| `-doh` | DoH 服务器 | `dns.alidns.com/dns-query` |
+| `-ech` | ECH 查询域名 | `cloudflare-ech.com` |
 
-## 打包为 exe
-项目已配好 GitHub Actions（推送 main 自动打包并发布 Release）。本地可手动：
+**完整示例：**
+
 ```bash
-pip install pyinstaller
-pyinstaller -F main.py -n jianche1
+ech-wk \
+  -server your-worker.workers.dev:443 \
+  -listen 0.0.0.0:30000 \
+  -token your-token \
+  -ip saas.sin.fan \
+  -doh dns.alidns.com/dns-query \
+  -ech cloudflare-ech.com
 ```
-生成的 exe 位于 `dist/`，请在 Windows 10 上测试。
 
-## 发布与版本
-- 每次修改 `version.bump_version()` 会自动递增版本号；到 `9.9.99` 后回到 `1.0.00`。
-- 推送到 main 后，GitHub Actions 会构建 exe 并发布到 Releases。
+## 配置代理客户端
 
-## 路径与存档
-- 默认存档：`C:\Users\<用户名>\Desktop\jianche1`
-- 子目录：
-  - `screenshots`：页面截图
-  - `saved_data`：变化日志（JSON）
+安装完成后，配置您的设备使用 SOCKS5 代理：
+
+- **代理地址**：`路由器IP` 或 `127.0.0.1`
+- **端口**：`30000`（或您自定义的端口）
+- **代理类型**：SOCKS5
+
+### 配合 PassWall 使用
+
+1. 进入 PassWall → 节点列表
+2. 添加 SOCKS5 节点：
+   - 地址：`127.0.0.1`
+   - 端口：`30000`
+3. 在主配置中选择该节点
+
+### 配合 OpenClash 使用
+
+在配置文件中添加：
+
+```yaml
+proxies:
+  - name: "ECH-Workers"
+    type: socks5
+    server: 127.0.0.1
+    port: 30000
+```
+
+## 服务管理命令
+
+```bash
+# 启动服务
+/etc/init.d/ech-wk start
+
+# 停止服务
+/etc/init.d/ech-wk stop
+
+# 重启服务
+/etc/init.d/ech-wk restart
+
+# 查看状态
+/etc/init.d/ech-wk status
+
+# 启用开机自启
+/etc/init.d/ech-wk enable
+
+# 禁用开机自启
+/etc/init.d/ech-wk disable
+
+# 查看日志
+cat /tmp/ech-wk.log
+logread | grep ech-wk
+```
 
 ## 常见问题
-- **无法截图/浏览器错误**：确保执行过 `python -m playwright install chromium`。
-- **OCR 无法识别中文**：安装 Tesseract 中文语言包，或调整区域更聚焦数字/价格文本。
-- **快捷键冲突**：在 UI 修改为不冲突的组合键，如 `ctrl+shift+f9`。
 
-## 开发提示
-- UI 位于 `ui/`，核心监控逻辑在 `monitor.py`。
-- 配置管理 `config.py`，版本管理 `version.py`。
-- 修改后请运行 `version.bump_version()`（已在构建中调用）。
+### Q: 安装后在服务菜单找不到？
 
-## 法律与合规
-请遵守目标网站的服务条款与 robots.txt，合理设置检测间隔，仅用于合法用途。
+执行以下命令后刷新页面：
+```bash
+rm -rf /tmp/luci-*
+```
 
+### Q: 如何完全卸载？
+
+```bash
+opkg remove ech-wk
+rm -rf /tmp/luci-*
+```
+
+### Q: 性能优化建议？
+
+- 使用「高级选项」中的「优选IP/域名」减少 DNS 查询
+- 如果监听地址设为 `0.0.0.0`，记得配置防火墙规则
+
+### Q: 升级到新版本？
+
+```bash
+# 卸载旧版本
+opkg remove ech-wk
+
+# 安装新版本
+opkg install /tmp/ech-wk_x.x.x-r1_x86_64.ipk
+
+# 清除缓存
+rm -rf /tmp/luci-*
+```
+
+## 致谢
+
+- 原始项目来源：[CF_NAT](https://t.me/CF_NAT)
+- 中国IP列表：[mayaxcn/china-ip-list](https://github.com/mayaxcn/china-ip-list)
+
+## 许可证
+
+MIT License
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！

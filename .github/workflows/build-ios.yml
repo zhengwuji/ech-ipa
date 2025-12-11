@@ -1,0 +1,215 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - '.github/workflows/build-ipk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史用于生成更新日志
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install briefcase toga
+      
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      
+      - name: Build ech-workers binary for iOS
+        run: |
+          # 编译 ech-workers 为 iOS arm64
+          echo "编译 ech-workers 为 iOS..."
+          
+          # 初始化 Go 模块
+          if [ ! -f go.mod ]; then
+            go mod init github.com/zhengwuji/ech-ipa
+          fi
+          go mod tidy
+          
+          # 编译为iOS arm64架构
+          GOOS=ios GOARCH=arm64 CGO_ENABLED=0 go build -o ech-workers-ios -ldflags="-s -w" ech-workers.go
+          
+          # 创建资源目录并复制二进制文件
+          mkdir -p src/echipa/resources
+          cp ech-workers-ios src/echipa/resources/ech-workers
+          chmod +x src/echipa/resources/ech-workers
+          
+          echo "ech-workers iOS编译完成"
+      
+      - name: Create iOS project
+        run: |
+          echo "创建 iOS 项目..."
+          briefcase create iOS
+      
+      - name: Build iOS app (unsigned)
+        run: |
+          echo "构建 iOS 应用（未签名）..."
+          
+          # 修改 Xcode 项目以禁用代码签名
+          XCODE_PROJECT="iOS/Xcode/ECH Workers.xcodeproj/project.pbxproj"
+          
+          if [ -f "$XCODE_PROJECT" ]; then
+            # 禁用代码签名
+            sed -i '' 's/CODE_SIGN_IDENTITY = .*/CODE_SIGN_IDENTITY = "";/g' "$XCODE_PROJECT"
+            sed -i '' 's/CODE_SIGNING_REQUIRED = .*/CODE_SIGNING_REQUIRED = NO;/g' "$XCODE_PROJECT"
+            sed -i '' 's/CODE_SIGNING_ALLOWED = .*/CODE_SIGNING_ALLOWED = NO;/g' "$XCODE_PROJECT"
+            
+            echo "已禁用代码签名"
+          fi
+          
+          # 构建
+          briefcase build iOS || echo "构建可能需要调整"
+      
+      - name: Package unsigned IPA
+        run: |
+          echo "打包未签名 IPA..."
+          
+          # 查找生成的 .app 文件
+          APP_PATH=$(find iOS -name "*.app" -type d | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "未找到 .app 文件，尝试手动构建..."
+            
+            # 手动使用 xcodebuild
+            cd iOS/Xcode
+            xcodebuild -project "ECH Workers.xcodeproj" \
+              -scheme "ECH Workers" \
+              -configuration Release \
+              -sdk iphoneos \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              -derivedDataPath ./build
+            
+            APP_PATH=$(find ./build -name "*.app" -type d | head -n 1)
+            cd ../..
+          fi
+          
+          if [ -n "$APP_PATH" ]; then
+            echo "找到应用: $APP_PATH"
+            
+            # 创建 Payload 目录
+            mkdir -p Payload
+            cp -r "$APP_PATH" Payload/
+            
+            # 打包为 IPA
+            zip -r ECHWorkers-unsigned.ipa Payload
+            
+            # 清理
+            rm -rf Payload
+            
+            echo "IPA 打包完成: ECHWorkers-unsigned.ipa"
+            ls -lh ECHWorkers-unsigned.ipa
+          else
+            echo "错误: 未找到 .app 文件"
+            exit 1
+          fi
+      
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "生成更新日志..."
+          
+          # 获取最近的标签
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            # 如果没有标签，获取所有提交
+            CHANGELOG=$(git log --pretty=format:"- %s (%an)" --no-merges | head -n 20)
+          else
+            # 获取从上一个标签到现在的提交
+            CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%an)" --no-merges)
+          fi
+          
+          # 如果changelog为空，使用默认消息
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- 首次发布"
+          fi
+          
+          # 保存到文件
+          echo "$CHANGELOG" > CHANGELOG.txt
+          
+          # 输出到 GitHub Actions
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          cat CHANGELOG.txt
+      
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ECHWorkers-iOS-unsigned
+          path: ECHWorkers-unsigned.ipa
+      
+      - name: Generate release tag
+        id: tag
+        run: |
+          TAG="ios-v1.2.0-$(date +'%Y%m%d-%H%M%S')"
+          echo "release_tag=$TAG" >> $GITHUB_OUTPUT
+          echo "生成标签: $TAG"
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: "iOS版本 ${{ steps.tag.outputs.release_tag }}"
+          body: |
+            # ECH Workers iOS 版本
+            
+            **未签名IPA - 需要自行签名安装**
+            
+            ## 安装方法
+            
+            ### 方法1: 使用 AltStore
+            1. 在iOS设备上安装 AltStore
+            2. 下载 `ECHWorkers-unsigned.ipa`
+            3. 在AltStore中打开IPA文件安装
+            
+            ### 方法2: 使用 Sideloadly
+            1. 在电脑上安装 Sideloadly
+            2. 下载 `ECHWorkers-unsigned.ipa`
+            3. 使用Sideloadly签名并安装到iOS设备
+            
+            ### 方法3: 使用 iOS App Signer
+            1. 下载 iOS App Signer
+            2. 使用您的开发者证书签名IPA
+            3. 通过Xcode或其他工具安装
+            
+            ## 更新日志
+            
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ---
+            
+            **构建时间**: ${{ steps.tag.outputs.release_tag }}
+            **支持设备**: iPhone/iPad (iOS 12.0+)
+            **架构**: arm64
+          files: |
+            ECHWorkers-unsigned.ipa
+            CHANGELOG.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
