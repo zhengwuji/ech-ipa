@@ -3,19 +3,19 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
-    <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <string>zh_CN</string>
     <key>CFBundleDisplayName</key>
     <string>ECH Workers</string>
     <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
+    <string>ECHWorkers</string>
     <key>CFBundleIdentifier</key>
     <string>com.echworkers.client</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>$(PRODUCT_NAME)</string>
+    <string>ECHWorkers</string>
     <key>CFBundlePackageType</key>
-    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+    <string>APPL</string>
     <key>CFBundleShortVersionString</key>
     <string>1.2.0</string>
     <key>CFBundleVersion</key>
@@ -33,7 +33,7 @@
     <dict/>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
-        <string>armv7</string>
+        <string>arm64</string>
     </array>
     <key>UISupportedInterfaceOrientations</key>
     <array>
@@ -51,7 +51,7 @@
     <key>NSLocalNetworkUsageDescription</key>
     <string>ECH Workers需要访问本地网络以提供代理服务</string>
     <key>MinimumOSVersion</key>
-    <string>13.0</string>
+    <string>14.0</string>
     <key>UIBackgroundModes</key>
     <array>
         <string>fetch</string>
