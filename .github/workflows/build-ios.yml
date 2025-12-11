@@ -1,13 +1,14 @@
-name: Build iOS IPA
+name: Build iOS IPA (DISABLED)
 
-on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'README.md'
-      - '.github/workflows/build-ipk.yml'
-  workflow_dispatch:
+# Workflow disabled - using build-swift-ios.yml instead
+# on:
+#   push:
+#     branches:
+#       - main
+#     paths-ignore:
+#       - 'README.md'
+#       - '.github/workflows/build-ipk.yml'
+#   workflow_dispatch:
 
 permissions:
   contents: write

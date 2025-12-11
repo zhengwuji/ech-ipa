@@ -26,6 +26,18 @@
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
         <true/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
     </dict>
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
@@ -57,5 +69,17 @@
         <string>fetch</string>
         <string>processing</string>
     </array>
+    <key>DTPlatformName</key>
+    <string>iphoneos</string>
+    <key>DTSDKName</key>
+    <string>iphoneos</string>
+    <key>DTCompiler</key>
+    <string>com.apple.compilers.llvm.clang.1_0</string>
+    <key>DTPlatformVersion</key>
+    <string>17.0</string>
+    <key>DTXcode</key>
+    <string>1500</string>
+    <key>DTXcodeBuild</key>
+    <string>15A240d</string>
 </dict>
 </plist>
