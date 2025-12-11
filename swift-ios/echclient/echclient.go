@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -21,6 +20,11 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+// LogHandler 是日志处理接口，用于 gomobile 兼容
+type LogHandler interface {
+	OnLog(message string)
+}
 
 // ECHClient 是提供给 iOS 调用的主客户端
 type ECHClient struct {
@@ -34,10 +38,11 @@ type ECHClient struct {
 	echListMu sync.RWMutex
 	echList   []byte
 	
-	listener  net.Listener
-	running   bool
-	stopChan  chan struct{}
-	logFunc   func(string)
+	listener   net.Listener
+	running    bool
+	stopChan   chan struct{}
+	logHandler LogHandler
+	lastLog    string
 }
 
 // NewECHClient 创建新的 ECH 客户端
@@ -49,17 +54,22 @@ func NewECHClient() *ECHClient {
 	}
 }
 
-// SetLogCallback 设置日志回调
-func (c *ECHClient) SetLogCallback(callback func(string)) {
-	c.logFunc = callback
+// SetLogHandler 设置日志处理器
+func (c *ECHClient) SetLogHandler(handler LogHandler) {
+	c.logHandler = handler
+}
+
+// GetLastLog 获取最后一条日志
+func (c *ECHClient) GetLastLog() string {
+	return c.lastLog
 }
 
 func (c *ECHClient) log(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	if c.logFunc != nil {
-		c.logFunc(msg)
+	c.lastLog = msg
+	if c.logHandler != nil {
+		c.logHandler.OnLog(msg)
 	}
-	log.Print(msg)
 }
 
 // Configure 配置客户端

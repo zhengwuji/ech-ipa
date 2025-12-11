@@ -64,6 +64,19 @@ jobs:
           chmod +x create_xcode_project.sh
           ./create_xcode_project.sh
           
+          # 生成各种尺寸的图标 (使用 sips 命令)
+          if [ -f Assets.xcassets/AppIcon.appiconset/Icon-1024.png ]; then
+            echo "生成应用图标..."
+            cd Assets.xcassets/AppIcon.appiconset
+            sips -z 120 120 Icon-1024.png --out Icon-60@2x.png
+            sips -z 180 180 Icon-1024.png --out Icon-60@3x.png
+            sips -z 76 76 Icon-1024.png --out Icon-76.png
+            sips -z 152 152 Icon-1024.png --out Icon-76@2x.png
+            sips -z 167 167 Icon-1024.png --out Icon-83.5@2x.png
+            cd ../..
+            echo "✅ 应用图标生成完成"
+          fi
+          
           echo "✅ 项目结构创建完成"
           ls -la
       

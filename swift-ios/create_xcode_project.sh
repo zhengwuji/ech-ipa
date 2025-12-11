@@ -34,6 +34,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 		A1000002000000000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002000000000000001 /* ContentView.swift */; };
 		A1000004000000000000001 /* ECHClient.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000005000000000000001 /* ECHClient.xcframework */; };
 		A1000005000000000000001 /* ECHClient.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A2000005000000000000001 /* ECHClient.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A1000006000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000006000000000000001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -55,6 +56,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 		A2000001000000000000001 /* ECHWorkersApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ECHWorkersApp.swift; sourceTree = "<group>"; };
 		A2000002000000000000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A2000004000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000006000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000005000000000000001 /* ECHClient.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = ECHClient.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -85,6 +87,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 				A2000001000000000000001 /* ECHWorkersApp.swift */,
 				A2000002000000000000001 /* ContentView.swift */,
 				A2000004000000000000001 /* Info.plist */,
+				A2000006000000000000001 /* Assets.xcassets */,
 			);
 			path = ECHWorkers;
 			sourceTree = "<group>";
@@ -164,6 +167,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1000006000000000000001 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -399,6 +403,7 @@ echo "✅ Xcode项目创建完成"
 mkdir -p ECHWorkers
 cp ECHWorkersApp.swift ECHWorkers/ 2>/dev/null || true
 cp ContentView.swift ECHWorkers/ 2>/dev/null || true
+cp -r Assets.xcassets ECHWorkers/ 2>/dev/null || true
 # Info.plist保持在根目录
 
 echo "✅ 源文件组织完成"

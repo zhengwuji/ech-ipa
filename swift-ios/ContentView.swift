@@ -1,6 +1,19 @@
 import SwiftUI
 import ECHClient
 
+// 日志处理器 - 实现 EchclientLogHandler 协议
+class ECHLogHandler: NSObject, EchclientLogHandlerProtocol {
+    var onLogMessage: ((String) -> Void)?
+    
+    func onLog(_ message: String?) {
+        if let msg = message {
+            DispatchQueue.main.async {
+                self.onLogMessage?(msg)
+            }
+        }
+    }
+}
+
 @available(iOS 14.0, *)
 struct ContentView: View {
     // 配置状态
@@ -10,7 +23,6 @@ struct ContentView: View {
     @State private var preferredIP = ""
     @State private var dohServer = "dns.alidns.com/dns-query"
     @State private var echDomain = "cloudflare-ech.com"
-    @State private var routingMode = 1 // 0=全局, 1=跳过中国大陆, 2=不改变
     
     // UI状态
     @State private var isRunning = false
@@ -19,9 +31,14 @@ struct ContentView: View {
     
     // ECH 客户端
     private var echClient: EchclientECHClient?
+    private var logHandler = ECHLogHandler()
     
     init() {
         echClient = EchclientNewECHClient()
+        logHandler.onLogMessage = { [self] message in
+            self.appendLog(message)
+        }
+        echClient?.setLogHandler(logHandler)
     }
     
     var body: some View {
@@ -190,7 +207,6 @@ struct ContentView: View {
         preferredIP = defaults.string(forKey: "preferredIP") ?? ""
         dohServer = defaults.string(forKey: "dohServer") ?? "dns.alidns.com/dns-query"
         echDomain = defaults.string(forKey: "echDomain") ?? "cloudflare-ech.com"
-        routingMode = defaults.integer(forKey: "routingMode")
     }
     
     func saveConfig() {
@@ -201,7 +217,6 @@ struct ContentView: View {
         defaults.set(preferredIP, forKey: "preferredIP")
         defaults.set(dohServer, forKey: "dohServer")
         defaults.set(echDomain, forKey: "echDomain")
-        defaults.set(routingMode, forKey: "routingMode")
         
         appendLog("[系统] 配置已保存")
     }
@@ -224,13 +239,6 @@ struct ContentView: View {
             echDomain: echDomain
         )
         
-        // 设置日志回调
-        echClient?.setLogCallback { message in
-            DispatchQueue.main.async {
-                self.appendLog(message ?? "")
-            }
-        }
-        
         // 启动代理
         var error: NSError?
         echClient?.start(&error)
@@ -251,7 +259,7 @@ struct ContentView: View {
         appendLog("[系统] 代理已停止")
     }
     
-    func appendLog(_ message: String) {
+    mutating func appendLog(_ message: String) {
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         logText += "[\(timestamp)] \(message)\n"
     }
