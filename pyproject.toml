@@ -52,8 +52,26 @@ system_requires = []
 requires = []
 
 [tool.briefcase.app.echipa.iOS]
-requires = []
 supported = true
+requires = []
+
+# iOS特定配置
+deployment_target = "12.0"
+
+# Info.plist 配置
+[tool.briefcase.app.echipa.iOS.info]
+# 支持后台运行
+UIBackgroundModes = ["fetch", "processing"]
+
+# 允许本地网络访问
+NSLocalNetworkUsageDescription = "ECH Workers需要访问本地网络以提供代理服务"
+
+# 权限描述
+NSCameraUsageDescription = "应用不使用相机"
+NSPhotoLibraryUsageDescription = "应用不使用相册"
+
+# 隐私清单
+NSPrivacyAccessedAPITypes = []
 
 [tool.briefcase.app.echipa.android]
 requires = []
