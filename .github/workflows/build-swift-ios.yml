@@ -90,6 +90,11 @@ jobs:
         run: |
           cd swift-ios
           
+          echo "项目结构:"
+          ls -la
+          echo "ECHWorkers 目录:"
+          ls -la ECHWorkers/ || true
+          
           echo "使用xcodebuild构建..."
           
           xcodebuild \
@@ -104,7 +109,7 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             ARCHS=arm64 \
             IPHONEOS_DEPLOYMENT_TARGET=14.0 \
-            BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+            2>&1 | tee build.log || (cat build.log && exit 1)
           
           echo "✅ 构建完成"
           
