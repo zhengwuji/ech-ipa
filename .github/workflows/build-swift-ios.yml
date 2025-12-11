@@ -97,15 +97,17 @@ jobs:
           
           echo "使用xcodebuild构建..."
           
+          # 不使用 CODE_SIGNING_REQUIRED=NO，改用 ad-hoc 签名
           xcodebuild \
             -project ECHWorkers.xcodeproj \
             -scheme ECHWorkers \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath ./build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
             ONLY_ACTIVE_ARCH=NO \
             ARCHS=arm64 \
             IPHONEOS_DEPLOYMENT_TARGET=14.0 \
@@ -117,10 +119,22 @@ jobs:
           APP_PATH=$(find ./build -name "*.app" -type d | head -n 1)
           echo "找到应用: $APP_PATH"
           
-          # 确保可执行文件有执行权限
+          # 验证可执行文件是否有效
           if [ -n "$APP_PATH" ]; then
+            if [ ! -f "$APP_PATH/ECHWorkers" ]; then
+              echo "❌ 错误: 可执行文件不存在"
+              exit 1
+            fi
+            
+            # 检查文件类型
+            file "$APP_PATH/ECHWorkers"
+            
+            # 检查架构
+            lipo -info "$APP_PATH/ECHWorkers" || echo "警告: lipo 检查失败"
+            
+            # 确保可执行权限
             chmod +x "$APP_PATH/ECHWorkers"
-            echo "✅ 设置可执行权限"
+            echo "✅ 可执行文件验证通过"
           fi
           
           # 复制 ECHClient.xcframework 到 .app/Frameworks
