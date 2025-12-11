@@ -288,13 +288,31 @@ jobs:
           
           # 创建 Payload 目录
           mkdir -p Payload
-          cp -r ECHWorkers.app Payload/
+          
+          # 使用 rsync 或 cp 确保完整复制，并清理不需要的文件
+          cp -R ECHWorkers.app Payload/
+          
+          # 清理可能导致问题的文件和目录
+          echo "清理可能导致问题的文件..."
+          find "Payload/ECHWorkers.app" -name ".DS_Store" -delete 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -name "*.swiftmodule" -delete 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -name "*.swiftdoc" -delete 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -name "*.swiftsourceinfo" -delete 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -type l -delete 2>/dev/null || true
+          
+          # 移除所有签名相关文件
+          find "Payload/ECHWorkers.app" -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -name "embedded.mobileprovision" -delete 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -name "*.entitlements" -delete 2>/dev/null || true
           
           # 再次验证 Payload 中的可执行文件
           if [ -f "Payload/ECHWorkers.app/ECHWorkers" ]; then
             echo "验证 Payload 中的可执行文件..."
             file "Payload/ECHWorkers.app/ECHWorkers"
             otool -h "Payload/ECHWorkers.app/ECHWorkers" || (echo "❌ Payload 验证失败" && exit 1)
+            
+            # 确保可执行文件有正确的权限
+            chmod 755 "Payload/ECHWorkers.app/ECHWorkers"
             
             # 显示 app bundle 结构
             echo "App bundle 结构:"
@@ -306,17 +324,41 @@ jobs:
               if file "$binary" | grep -q "Mach-O"; then
                 echo "✅ 有效二进制: $binary"
                 # 确保文件有正确的权限
-                chmod +x "$binary"
+                chmod 755 "$binary"
               else
                 echo "⚠️  非 Mach-O 文件但有执行权限: $binary"
                 # 移除执行权限（如果不是二进制文件）
-                chmod -x "$binary" 2>/dev/null || true
+                chmod 644 "$binary" 2>/dev/null || true
               fi
             done
+            
+            # 验证 framework 二进制文件
+            if [ -d "Payload/ECHWorkers.app/Frameworks" ]; then
+              echo "验证 Frameworks 中的二进制文件..."
+              find "Payload/ECHWorkers.app/Frameworks" -type f -perm +111 | while read binary; do
+                if file "$binary" | grep -q "Mach-O"; then
+                  echo "✅ Framework 二进制: $binary"
+                  chmod 755 "$binary"
+                  otool -h "$binary" > /dev/null 2>&1 || echo "⚠️  警告: $binary 验证失败"
+                fi
+              done
+            fi
             
             # 列出所有文件类型
             echo "App bundle 中的文件类型统计:"
             find "Payload/ECHWorkers.app" -type f -exec file {} \; | sort | uniq -c
+            
+            # 验证 .app bundle 是一个目录（不是文件）
+            if [ ! -d "Payload/ECHWorkers.app" ]; then
+              echo "❌ 错误: .app bundle 不是目录"
+              exit 1
+            fi
+            
+            # 确保 Info.plist 存在
+            if [ ! -f "Payload/ECHWorkers.app/Info.plist" ]; then
+              echo "❌ 错误: Info.plist 不存在"
+              exit 1
+            fi
           fi
           
           # 打包为 IPA（使用存储模式，避免压缩损坏二进制文件）
