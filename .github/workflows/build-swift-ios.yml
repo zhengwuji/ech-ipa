@@ -86,6 +86,43 @@ jobs:
           echo "✅ 项目结构创建完成"
           ls -la
       
+      - name: Create temporary signing certificate
+        run: |
+          # 创建临时 keychain
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          
+          # 创建自签名证书
+          cat > cert.conf << EOF
+          [ req ]
+          default_bits       = 2048
+          distinguished_name = req_distinguished_name
+          x509_extensions    = v3_ca
+          prompt             = no
+          
+          [ req_distinguished_name ]
+          CN = TrollStore Temp Cert
+          
+          [ v3_ca ]
+          basicConstraints = critical,CA:TRUE
+          keyUsage = critical,keyCertSign,cRLSign,digitalSignature
+          EOF
+          
+          # 生成证书
+          openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 1 -nodes -config cert.conf
+          openssl pkcs12 -export -out cert.p12 -inkey key.pem -in cert.pem -passout pass:temp
+          
+          # 导入证书到 keychain
+          security import cert.p12 -k build.keychain -P temp -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k actions build.keychain
+          
+          # 查找证书身份
+          CERT_IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep "TrollStore Temp Cert" | awk '{print $2}')
+          echo "CERT_IDENTITY=$CERT_IDENTITY" >> $GITHUB_ENV
+          echo "✅ 临时签名证书已创建: $CERT_IDENTITY"
+      
       - name: Build with xcodebuild
         run: |
           cd swift-ios
@@ -95,15 +132,20 @@ jobs:
           echo "ECHWorkers 目录:"
           ls -la ECHWorkers/ || true
           
-          echo "使用xcodebuild构建..."
+          echo "使用 xcodebuild 构建..."
+          echo "使用证书: $CERT_IDENTITY"
           
-          # 允许自动签名构建，之后再处理签名
+          # 使用临时签名证书构建
           xcodebuild \
             -project ECHWorkers.xcodeproj \
             -scheme ECHWorkers \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath ./build \
+            CODE_SIGN_IDENTITY="$CERT_IDENTITY" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
             ONLY_ACTIVE_ARCH=NO \
             ARCHS=arm64 \
             IPHONEOS_DEPLOYMENT_TARGET=14.0 \
@@ -123,18 +165,26 @@ jobs:
             fi
             
             # 检查文件类型
+            echo "文件类型:"
             file "$APP_PATH/ECHWorkers"
             
             # 检查架构
-            lipo -info "$APP_PATH/ECHWorkers" || echo "警告: lipo 检查失败"
+            echo "架构信息:"
+            lipo -info "$APP_PATH/ECHWorkers"
             
-            # 移除原有签名并重新签名（TrollStore 兼容）
-            echo "处理代码签名..."
+            # 检查当前签名
+            echo "当前签名:"
+            codesign -dv "$APP_PATH/ECHWorkers" 2>&1 || true
+            
+            # 移除原有签名（TrollStore 兼容）
+            echo "移除签名..."
             codesign --remove-signature "$APP_PATH/ECHWorkers" 2>/dev/null || true
             codesign --remove-signature "$APP_PATH" 2>/dev/null || true
-            
-            # 移除 _CodeSignature 目录
             rm -rf "$APP_PATH/_CodeSignature" 2>/dev/null || true
+            
+            # 再次验证文件类型（确保移除签名后仍然有效）
+            echo "移除签名后的文件类型:"
+            file "$APP_PATH/ECHWorkers"
             
             # 确保可执行权限
             chmod +x "$APP_PATH/ECHWorkers"
