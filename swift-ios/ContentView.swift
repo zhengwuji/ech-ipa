@@ -259,7 +259,7 @@ struct ContentView: View {
         appendLog("[系统] 代理已停止")
     }
     
-    mutating func appendLog(_ message: String) {
+    func appendLog(_ message: String) {
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         logText += "[\(timestamp)] \(message)\n"
     }
