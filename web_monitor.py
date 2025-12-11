@@ -182,7 +182,6 @@ class WebMonitor:
         if browser_path:
             options.binary_location = browser_path
         
-        try:
         cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
         max_retries = 3
         
