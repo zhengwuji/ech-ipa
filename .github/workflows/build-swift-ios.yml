@@ -62,9 +62,10 @@ jobs:
           go get golang.org/x/mobile/bind/objc@latest
           go get golang.org/x/mobile/bind/seq@latest
           
-          # 使用 gomobile 构建 iOS framework - 只构建 arm64 真机架构
+          # 使用 gomobile 构建 iOS framework - 只构建 arm64 真机架构（跳过模拟器）
           echo "正在构建 ECHClient.xcframework (arm64 only)..."
-          gomobile bind -target=ios -iosversion=14.0 -o ../ECHClient.xcframework .
+          # 使用 ios/arm64 确保只生成真机架构，不生成模拟器
+          gomobile bind -target=ios/arm64 -iosversion=14.0 -o ../ECHClient.xcframework .
           
           echo "✅ ECHClient.xcframework 构建完成"
           ls -la ../ECHClient.xcframework/
@@ -76,6 +77,9 @@ jobs:
             if [ -f "$FRAMEWORK_BINARY" ]; then
               echo "原始架构信息:"
               lipo -info "$FRAMEWORK_BINARY"
+              file "$FRAMEWORK_BINARY"
+              echo "详细 Mach-O 信息:"
+              otool -hv "$FRAMEWORK_BINARY" 2>/dev/null || true
               
               # 检查是否是 fat binary（包含多个架构）
               ARCH_INFO=$(lipo -info "$FRAMEWORK_BINARY" 2>&1)
@@ -273,6 +277,8 @@ jobs:
               if [ -f "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" ]; then
                 echo "验证 framework 可执行文件..."
                 file "$APP_PATH/Frameworks/ECHClient.framework/ECHClient"
+                echo "详细架构信息:"
+                otool -hv "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" 2>/dev/null || true
                 
                 # 验证是有效的 Mach-O 文件
                 if ! file "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" | grep -q "Mach-O"; then
