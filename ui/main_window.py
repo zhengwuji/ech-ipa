@@ -3,11 +3,15 @@ import sys
 import os
 
 # 确保可以导入上级目录的模块
-if __name__ == '__main__' or (hasattr(sys, 'frozen') and sys.frozen):
-    # 打包后或直接运行
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
+if getattr(sys, 'frozen', False):
+    # 打包后的exe模式
+    base_path = sys._MEIPASS
+    # 添加当前目录和base_path到路径
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.insert(0, current_dir)
+    if base_path not in sys.path:
+        sys.path.insert(0, base_path)
 else:
     # 开发模式
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,20 +26,44 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt5.QtCore import Qt, QTimer, QDateTime, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImage, QFont
 
+# 导入项目模块
 try:
+    # 先尝试直接导入
     import config
     from web_monitor import WebMonitor
 except ImportError:
-    # 如果直接导入失败，尝试从父目录导入
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("config", os.path.join(parent_dir, "config.py"))
-    config = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(config)
-    
-    spec = importlib.util.spec_from_file_location("web_monitor", os.path.join(parent_dir, "web_monitor.py"))
-    web_monitor = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(web_monitor)
-    WebMonitor = web_monitor.WebMonitor
+    # 如果直接导入失败，使用备用方法
+    try:
+        # 尝试从当前路径导入
+        if getattr(sys, 'frozen', False):
+            base_path = sys._MEIPASS
+            import importlib
+            config = importlib.import_module('config')
+            web_monitor = importlib.import_module('web_monitor')
+            WebMonitor = web_monitor.WebMonitor
+        else:
+            # 开发模式下的备用导入
+            parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            import importlib.util
+            
+            config_path = os.path.join(parent_dir, "config.py")
+            if os.path.exists(config_path):
+                spec = importlib.util.spec_from_file_location("config", config_path)
+                config = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(config)
+            else:
+                raise ImportError(f"找不到 config.py: {config_path}")
+            
+            web_monitor_path = os.path.join(parent_dir, "web_monitor.py")
+            if os.path.exists(web_monitor_path):
+                spec = importlib.util.spec_from_file_location("web_monitor", web_monitor_path)
+                web_monitor = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(web_monitor)
+                WebMonitor = web_monitor.WebMonitor
+            else:
+                raise ImportError(f"找不到 web_monitor.py: {web_monitor_path}")
+    except Exception as e:
+        raise ImportError(f"无法导入必要的模块: {e}")
 
 from datetime import datetime
 import json
