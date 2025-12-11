@@ -194,26 +194,72 @@ jobs:
             mkdir -p "$APP_PATH/Frameworks"
             # 找到 ios-arm64 的 framework
             if [ -d "ECHClient.xcframework/ios-arm64/ECHClient.framework" ]; then
-              cp -r "ECHClient.xcframework/ios-arm64/ECHClient.framework" "$APP_PATH/Frameworks/"
+              # 先清理目标目录
+              rm -rf "$APP_PATH/Frameworks/ECHClient.framework" 2>/dev/null || true
+              
+              # 复制 framework
+              cp -R "ECHClient.xcframework/ios-arm64/ECHClient.framework" "$APP_PATH/Frameworks/"
               
               # 确保 framework 完全没有签名（TrollStore 需要）
-              echo "清理 framework 签名..."
+              echo "清理 framework 签名和不需要的文件..."
               codesign --remove-signature "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" 2>/dev/null || true
               codesign --remove-signature "$APP_PATH/Frameworks/ECHClient.framework" 2>/dev/null || true
               rm -rf "$APP_PATH/Frameworks/ECHClient.framework/_CodeSignature" 2>/dev/null || true
               rm -rf "$APP_PATH/Frameworks/ECHClient.framework/embedded.mobileprovision" 2>/dev/null || true
               
+              # 清理 framework 中所有不需要的文件
+              find "$APP_PATH/Frameworks/ECHClient.framework" -name ".DS_Store" -delete 2>/dev/null || true
+              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftmodule" -delete 2>/dev/null || true
+              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftdoc" -delete 2>/dev/null || true
+              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftsourceinfo" -delete 2>/dev/null || true
+              find "$APP_PATH/Frameworks/ECHClient.framework" -type l -delete 2>/dev/null || true
+              
               # 验证 framework 可执行文件
               if [ -f "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" ]; then
                 echo "验证 framework 可执行文件..."
                 file "$APP_PATH/Frameworks/ECHClient.framework/ECHClient"
+                
+                # 验证是有效的 Mach-O 文件
+                if ! file "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" | grep -q "Mach-O"; then
+                  echo "❌ Framework 可执行文件不是有效的 Mach-O 格式"
+                  exit 1
+                fi
+                
                 otool -h "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" || (echo "❌ Framework 验证失败" && exit 1)
                 
                 # 确保 framework 可执行文件有正确的权限
-                chmod +x "$APP_PATH/Frameworks/ECHClient.framework/ECHClient"
+                chmod 755 "$APP_PATH/Frameworks/ECHClient.framework/ECHClient"
+                
+                # 验证 framework 目录结构
+                if [ ! -f "$APP_PATH/Frameworks/ECHClient.framework/Info.plist" ]; then
+                  echo "⚠️  警告: Framework Info.plist 不存在，创建最小版本..."
+                  cat > "$APP_PATH/Frameworks/ECHClient.framework/Info.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>ECHClient</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.echworkers.echclient</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundlePackageType</key>
+    <string>FMWK</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+</dict>
+</plist>
+EOF
+                fi
+              else
+                echo "❌ Framework 可执行文件不存在"
+                exit 1
               fi
               
-              echo "✅ ECHClient.framework 已复制"
+              echo "✅ ECHClient.framework 已复制并验证"
             fi
           fi
           
@@ -296,8 +342,17 @@ jobs:
           # 创建 Payload 目录
           mkdir -p Payload
           
-          # 使用 rsync 或 cp 确保完整复制，并清理不需要的文件
+          # 使用 cp -R 确保完整复制
           cp -R ECHWorkers.app Payload/
+          
+          # 确保 .app bundle 本身是一个目录（不是文件或符号链接）
+          if [ ! -d "Payload/ECHWorkers.app" ]; then
+            echo "❌ 错误: .app bundle 不是目录"
+            exit 1
+          fi
+          
+          # 确保 .app bundle 有正确的权限
+          chmod 755 "Payload/ECHWorkers.app"
           
           # 清理可能导致问题的文件和目录
           echo "清理可能导致问题的文件..."
