@@ -205,41 +205,23 @@ jobs:
               # 先清理目标目录
               rm -rf "$APP_PATH/Frameworks/ECHClient.framework" 2>/dev/null || true
               
-              # 复制 framework
-              cp -R "ECHClient.xcframework/ios-arm64/ECHClient.framework" "$APP_PATH/Frameworks/"
+              # 复制 framework - 只复制二进制文件，不复制整个目录
+              mkdir -p "$APP_PATH/Frameworks/ECHClient.framework"
               
-              # 确保 framework 完全没有签名（TrollStore 需要）
-              echo "清理 framework 签名和不需要的文件..."
+              # 只复制 Mach-O 二进制文件（这是唯一需要的文件）
+              cp "ECHClient.xcframework/ios-arm64/ECHClient.framework/ECHClient" "$APP_PATH/Frameworks/ECHClient.framework/"
+              
+              echo "彻底清理 framework（TrollStore/ldid 兼容模式）..."
+              
+              # 移除签名
               codesign --remove-signature "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" 2>/dev/null || true
-              codesign --remove-signature "$APP_PATH/Frameworks/ECHClient.framework" 2>/dev/null || true
-              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/_CodeSignature" 2>/dev/null || true
-              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/embedded.mobileprovision" 2>/dev/null || true
               
-              # 清理 framework 中所有不需要的文件（TrollStore/ldid 兼容）
-              # ldid 只能处理 Mach-O 二进制，其他文件会导致 "Unknown header magic" 错误
+              # 确保二进制文件有正确的权限
+              chmod 755 "$APP_PATH/Frameworks/ECHClient.framework/ECHClient"
+              chmod 755 "$APP_PATH/Frameworks/ECHClient.framework"
               
-              # 删除所有子目录（Headers, Modules, Resources, Versions 等）
-              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/Headers" 2>/dev/null || true
-              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/Modules" 2>/dev/null || true
-              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/Versions" 2>/dev/null || true
-              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/Resources" 2>/dev/null || true
-              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/_CodeSignature" 2>/dev/null || true
-              
-              # 删除所有非必要文件
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.h" -delete 2>/dev/null || true
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.modulemap" -delete 2>/dev/null || true
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftmodule" -type d -exec rm -rf {} + 2>/dev/null || true
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftdoc" -delete 2>/dev/null || true
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftsourceinfo" -delete 2>/dev/null || true
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name ".DS_Store" -delete 2>/dev/null || true
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name "._*" -delete 2>/dev/null || true
-              find "$APP_PATH/Frameworks/ECHClient.framework" -type l -delete 2>/dev/null || true
-              
-              # 删除除了 ECHClient 和 Info.plist 以外的所有文件
-              find "$APP_PATH/Frameworks/ECHClient.framework" -type f ! -name "ECHClient" ! -name "Info.plist" -delete 2>/dev/null || true
-              
-              # 删除所有空目录
-              find "$APP_PATH/Frameworks/ECHClient.framework" -type d -empty -delete 2>/dev/null || true
+              # 创建最小的 Info.plist（iOS 需要它来识别 framework）
+              printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n<key>CFBundleExecutable</key>\n<string>ECHClient</string>\n<key>CFBundleIdentifier</key>\n<string>com.echworkers.echclient</string>\n<key>CFBundleInfoDictionaryVersion</key>\n<string>6.0</string>\n<key>CFBundlePackageType</key>\n<string>FMWK</string>\n<key>CFBundleVersion</key>\n<string>1</string>\n<key>MinimumOSVersion</key>\n<string>14.0</string>\n</dict>\n</plist>\n' > "$APP_PATH/Frameworks/ECHClient.framework/Info.plist"
               
               # 验证清理后 Framework 只包含必要文件
               echo "清理后的 Framework 结构:"
