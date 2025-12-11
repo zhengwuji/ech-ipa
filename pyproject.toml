@@ -54,12 +54,7 @@ requires = []
 [tool.briefcase.app.echipa.iOS]
 requires = []
 supported = true
-# iOS specific settings for unsigned build
-build_settings = {
-    "CODE_SIGN_IDENTITY" = "",
-    "CODE_SIGNING_REQUIRED" = "NO",
-    "CODE_SIGNING_ALLOWED" = "NO",
-}
 
 [tool.briefcase.app.echipa.android]
 requires = []
+

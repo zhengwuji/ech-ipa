@@ -43,14 +43,15 @@ jobs:
           # 编译 ech-workers 为 iOS arm64
           echo "编译 ech-workers 为 iOS..."
           
-          # 初始化 Go 模块
-          if [ ! -f go.mod ]; then
-            go mod init github.com/zhengwuji/ech-ipa
-          fi
-          go mod tidy
+          # 使用现有的 go.mod
+          cd ech-wk-package/src
           
-          # 编译为iOS arm64架构
-          GOOS=ios GOARCH=arm64 CGO_ENABLED=0 go build -o ech-workers-ios -ldflags="-s -w" ech-workers.go
+          # 确保依赖已下载
+          go mod download
+          
+          # 编译为iOS arm64架构（静态链接）
+          cd ../..
+          GOOS=ios GOARCH=arm64 CGO_ENABLED=0 go build -o ech-workers-ios -ldflags="-s -w" ech-wk-package/src/ech-workers.go
           
           # 创建资源目录并复制二进制文件
           mkdir -p src/echipa/resources
@@ -58,6 +59,8 @@ jobs:
           chmod +x src/echipa/resources/ech-workers
           
           echo "ech-workers iOS编译完成"
+          ls -lh src/echipa/resources/ech-workers
+
       
       - name: Create iOS project
         run: |
