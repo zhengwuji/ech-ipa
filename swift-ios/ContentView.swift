@@ -240,17 +240,14 @@ struct ContentView: View {
         )
         
         // 启动代理
-        var error: NSError?
-        echClient?.start(&error)
-        
-        if let error = error {
+        do {
+            try echClient?.start()
+            isRunning = true
+            appendLog("[系统] 代理已启动")
+            appendLog("[系统] ECH 加密已启用")
+        } catch {
             appendLog("[错误] 启动失败: \(error.localizedDescription)")
-            return
         }
-        
-        isRunning = true
-        appendLog("[系统] 代理已启动")
-        appendLog("[系统] ECH 加密已启用")
     }
     
     func stopProxy() {
