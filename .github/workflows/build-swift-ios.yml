@@ -57,87 +57,54 @@ jobs:
           echo "✅ ech-workers编译完成"
           ls -lh swift-ios/Resources/ech-workers
       
-      - name: Create Xcode project
-        run: |
-          cd swift-ios
-          
-          # 创建Xcode项目文件
-          cat > ECHWorkers.xcodeproj/project.pbxproj << 'EOF'
-          // Swift Xcode Project
-          // Minimal configuration for command-line build
-          {
-            archiveVersion = 1;
-            classes = {
-            };
-            objectVersion = 54;
-            objects = {
-              /* Begin PBXBuildFile section */
-              /* End PBXBuildFile section */
-              
-              /* Begin PBXFileReference section */
-              /* End PBXFileReference section */
-              
-              /* Begin PBXFrameworksBuildPhase section */
-              /* End PBXFrameworksBuildPhase section */
-              
-              /* Begin PBXGroup section */
-              /* End PBXGroup section */
-              
-              /* Begin PBXNativeTarget section */
-              /* End PBXNativeTarget section */
-              
-              /* Begin PBXProject section */
-              /* End PBXProject section */
-              
-              /* Begin PBXResourcesBuildPhase section */
-              /* End PBXResourcesBuildPhase section */
-              
-              /* Begin PBXSourcesBuildPhase section */
-              /* End PBXSourcesBuildPhase section */
-              
-              /* Begin XCBuildConfiguration section */
-              /* End XCBuildConfiguration section */
-              
-              /* Begin XCConfigurationList section */
-              /* End XCConfigurationList section */
-            };
-            rootObject = "PROJECT_ROOT";
-          }
-          EOF
-          
-          mkdir -p ECHWorkers.xcodeproj
       
-      - name: Build iOS app
+      - name: Setup project structure
         run: |
           cd swift-ios
           
-          echo "创建iOS应用包结构..."
+          echo "准备项目文件..."
+          chmod +x create_xcode_project.sh
+          ./create_xcode_project.sh
           
-          # 创建 .app 目录结构
-          mkdir -p ECHWorkers.app
+          echo "✅ 项目结构创建完成"
+          ls -la
+      
+      - name: Build with xcodebuild
+        run: |
+          cd swift-ios
           
-          # 复制Info.plist
-          cp Info.plist ECHWorkers.app/
+          echo "使用xcodebuild构建..."
           
-          # 复制Resources
-          if [ -d Resources ]; then
-            cp -r Resources ECHWorkers.app/
+          xcodebuild \
+            -project ECHWorkers.xcodeproj \
+            -scheme ECHWorkers \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ./build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            ARCHS=arm64 \
+            IPHONEOS_DEPLOYMENT_TARGET=12.0 \
+            BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+          
+          echo "✅ 构建完成"
+          
+          # 查找生成的.app
+          APP_PATH=$(find ./build -name "*.app" -type d | head -n 1)
+          echo "找到应用: $APP_PATH"
+          
+          # 复制Resources到.app
+          if [ -d Resources ] && [ -n "$APP_PATH" ]; then
+            echo "复制Resources..."
+            cp -r Resources "$APP_PATH/"
           fi
           
-          # 创建一个简单的可执行文件占位符
-          # 注意：这是未编译的Swift源码包，TrollStore可以安装但不会真正运行
-          # 实际上我们需要在macOS上用Xcode编译
-          
-          echo "#!/bin/sh" > ECHWorkers.app/ECHWorkers
-          echo "# Swift应用需要Xcode编译" >> ECHWorkers.app/ECHWorkers
-          chmod +x ECHWorkers.app/ECHWorkers
-          
-          # 复制Swift源文件到app中作为参考
-          mkdir -p ECHWorkers.app/Sources
-          cp *.swift ECHWorkers.app/Sources/ 2>/dev/null || true
-          
-          echo "✅ .app结构创建完成"
-          ls -la ECHWorkers.app/
+          # 复制.app到当前目录
+          if [ -n "$APP_PATH" ]; then
+            cp -r "$APP_PATH" ./ECHWorkers.app
+          fi
       
       - name: Package IPA
         run: |
