@@ -156,6 +156,14 @@ jobs:
             echo "架构信息:"
             lipo -info "$APP_PATH/ECHWorkers" || (echo "❌ lipo 检查失败" && exit 1)
             
+            # 验证架构是 arm64
+            APP_ARCH=$(lipo -info "$APP_PATH/ECHWorkers" 2>&1)
+            if ! echo "$APP_ARCH" | grep -q "arm64"; then
+              echo "❌ 错误: 可执行文件架构不是 arm64: $APP_ARCH"
+              exit 1
+            fi
+            echo "✅ 可执行文件架构验证通过: $APP_ARCH"
+            
             # 检查当前签名（应该没有签名）
             echo "当前签名状态:"
             codesign -dv "$APP_PATH/ECHWorkers" 2>&1 || echo "未签名（符合预期）"
@@ -246,6 +254,16 @@ jobs:
                 if ! file "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" | grep -q "Mach-O"; then
                   echo "❌ Framework 可执行文件不是有效的 Mach-O 格式"
                   exit 1
+                fi
+                
+                # 检查架构
+                echo "Framework 架构信息:"
+                lipo -info "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" || (echo "❌ Framework 架构检查失败" && exit 1)
+                
+                # 验证架构是 arm64
+                FRAMEWORK_ARCH=$(lipo -info "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" 2>&1)
+                if ! echo "$FRAMEWORK_ARCH" | grep -q "arm64"; then
+                  echo "⚠️  警告: Framework 架构不是 arm64: $FRAMEWORK_ARCH"
                 fi
                 
                 otool -h "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" || (echo "❌ Framework 验证失败" && exit 1)
@@ -406,6 +424,23 @@ jobs:
           
           # 确保所有普通文件都有正确的权限
           find "Payload/ECHWorkers.app" -type f ! -perm +111 -exec chmod 644 {} \; 2>/dev/null || true
+          
+          # 最终验证所有二进制文件的架构
+          echo "最终验证所有二进制文件的架构..."
+          find "Payload/ECHWorkers.app" -type f -perm +111 | while read binary; do
+            if file "$binary" | grep -q "Mach-O"; then
+              echo "验证架构: $binary"
+              ARCH_INFO=$(lipo -info "$binary" 2>&1)
+              if [ $? -eq 0 ]; then
+                echo "  ✅ $ARCH_INFO"
+                if ! echo "$ARCH_INFO" | grep -q "arm64"; then
+                  echo "  ⚠️  警告: 不是 arm64 架构"
+                fi
+              else
+                echo "  ❌ 架构检查失败: $ARCH_INFO"
+              fi
+            fi
+          done
           
           # 清理可能导致问题的文件和目录
           echo "清理可能导致问题的文件..."
