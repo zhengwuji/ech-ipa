@@ -319,8 +319,8 @@ jobs:
             find "Payload/ECHWorkers.app" -type f -exec file {} \; | sort | uniq -c
           fi
           
-          # 打包为 IPA
-          zip -r ../ECHWorkers-Swift-unsigned.ipa Payload
+          # 打包为 IPA（使用存储模式，避免压缩损坏二进制文件）
+          zip -0 -r ../ECHWorkers-Swift-unsigned.ipa Payload
           
           cd ..
           echo "✅ IPA打包完成"
