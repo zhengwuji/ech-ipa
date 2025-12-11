@@ -37,9 +37,10 @@ jobs:
     
     - name: Build EXE
       run: |
-        pyinstaller --onefile --windowed --name="网站监控工具" main.py
+        pyinstaller build_exe.spec
         if (Test-Path "dist\网站监控工具.exe") {
           echo "Build successful"
+          Get-Item "dist\网站监控工具.exe" | Select-Object Name, Length, LastWriteTime
         } else {
           echo "Build failed"
           exit 1
