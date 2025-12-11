@@ -247,10 +247,24 @@ struct ConfigField: View {
             Text(label)
                 .font(.caption)
                 .foregroundColor(.secondary)
-            TextField(placeholder, text: $text)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .autocapitalization(.none)
-                .disableAutocorrection(true)
+            textField
+        }
+    }
+    
+    private var textField: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(RoundedBorderTextFieldStyle())
+            .disableAutocorrection(true)
+            .modifier(AutocapitalizationModifier())
+    }
+}
+
+struct AutocapitalizationModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 15.0, *) {
+            content.textInputAutocapitalization(.never)
+        } else {
+            content.autocapitalization(.none)
         }
     }
 }
