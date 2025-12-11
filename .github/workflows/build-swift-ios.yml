@@ -62,11 +62,39 @@ jobs:
           go get golang.org/x/mobile/bind/objc@latest
           go get golang.org/x/mobile/bind/seq@latest
           
-          # 使用 gomobile 构建 iOS framework
-          echo "正在构建 ECHClient.xcframework..."
-          gomobile bind -target=ios -o ../ECHClient.xcframework .
+          # 使用 gomobile 构建 iOS framework - 只构建 arm64 真机架构
+          echo "正在构建 ECHClient.xcframework (arm64 only)..."
+          gomobile bind -target=ios -iosversion=14.0 -o ../ECHClient.xcframework .
           
           echo "✅ ECHClient.xcframework 构建完成"
+          ls -la ../ECHClient.xcframework/
+          
+          # 验证framework架构并移除模拟器架构（如果存在）
+          if [ -d "../ECHClient.xcframework/ios-arm64/ECHClient.framework" ]; then
+            echo "检查 arm64 真机 framework..."
+            FRAMEWORK_BINARY="../ECHClient.xcframework/ios-arm64/ECHClient.framework/ECHClient"
+            if [ -f "$FRAMEWORK_BINARY" ]; then
+              echo "原始架构信息:"
+              lipo -info "$FRAMEWORK_BINARY"
+              
+              # 确保只包含 arm64 架构（移除其他架构）
+              if lipo -info "$FRAMEWORK_BINARY" | grep -q "arm64"; then
+                # 提取纯 arm64 架构
+                lipo "$FRAMEWORK_BINARY" -thin arm64 -output "${FRAMEWORK_BINARY}.tmp"
+                mv "${FRAMEWORK_BINARY}.tmp" "$FRAMEWORK_BINARY"
+                echo "提取后的架构信息:"
+                lipo -info "$FRAMEWORK_BINARY"
+              fi
+            fi
+          fi
+          
+          # 移除模拟器架构的framework（爱思助手不需要）
+          if [ -d "../ECHClient.xcframework/ios-arm64_x86_64-simulator" ]; then
+            echo "移除模拟器架构..."
+            rm -rf "../ECHClient.xcframework/ios-arm64_x86_64-simulator"
+          fi
+          
+          echo "最终 xcframework 结构:"
           ls -la ../ECHClient.xcframework/
       
       - name: Setup project structure
@@ -491,6 +519,47 @@ jobs:
               echo "❌ 错误: Info.plist 不存在"
               exit 1
             fi
+            
+            # 【关键】强制所有 Mach-O 二进制文件只包含 arm64 架构
+            echo "🔧 强制提取所有二进制文件的 arm64 架构（移除 fat binary）..."
+            find "Payload/ECHWorkers.app" -type f | while read file; do
+              if file "$file" | grep -q "Mach-O"; then
+                echo "处理: $file"
+                ARCH_INFO=$(lipo -info "$file" 2>&1)
+                echo "  当前架构: $ARCH_INFO"
+                
+                # 如果包含 arm64,提取纯 arm64 架构
+                if echo "$ARCH_INFO" | grep -q "arm64"; then
+                  # 使用 lipo -thin 提取纯 arm64
+                  lipo "$file" -thin arm64 -output "${file}.tmp" 2>/dev/null
+                  if [ $? -eq 0 ]; then
+                    mv "${file}.tmp" "$file"
+                    NEW_ARCH=$(lipo -info "$file" 2>&1)
+                    echo "  ✅ 提取后架构: $NEW_ARCH"
+                  else
+                    echo "  ℹ️  已是纯 arm64 架构"
+                  fi
+                else
+                  echo "  ⚠️  警告: 不包含 arm64 架构: $ARCH_INFO"
+                fi
+              fi
+            done
+            
+            # 最终验证所有二进制都是纯 arm64（非 fat binary）
+            echo "🔍 最终验证所有二进制架构..."
+            HAS_NON_ARM64=0
+            find "Payload/ECHWorkers.app" -type f | while read file; do
+              if file "$file" | grep -q "Mach-O"; then
+                ARCH_INFO=$(lipo -info "$file" 2>&1)
+                if ! echo "$ARCH_INFO" | grep -q "^Non-fat file.*arm64$"; then
+                  if ! echo "$ARCH_INFO" | grep -q "^Architectures in the fat file.*arm64$" || echo "$ARCH_INFO" | grep -q "x86_64\|i386"; then
+                    echo "⚠️  $file: $ARCH_INFO"
+                    HAS_NON_ARM64=1
+                  fi
+                fi
+                echo "  ✅ $file: arm64 only"
+              fi
+            done
           fi
           
           # 获取 commit hash
