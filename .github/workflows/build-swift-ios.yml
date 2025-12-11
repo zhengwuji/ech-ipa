@@ -436,9 +436,11 @@ jobs:
             ## 安装方法
             
             ### TrollStore安装（推荐）
-            1. 下载 `ECHWorkers-Swift-unsigned.ipa`
+            1. 下载 `${{ env.IPA_NAME }}`
             2. 在TrollStore中安装
             3. 打开应用即可使用
+            
+            **Commit**: ${{ steps.commit.outputs.commit_hash }}
             
             ### 其他签名工具
             - AltStore
