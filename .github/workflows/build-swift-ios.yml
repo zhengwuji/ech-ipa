@@ -335,6 +335,27 @@ jobs:
           # 确保 .app bundle 有正确的权限
           chmod 755 "Payload/ECHWorkers.app"
           
+          # 彻底清理可能导致 ldid 混淆的所有文件
+          echo "彻底清理 .app bundle..."
+          find "Payload/ECHWorkers.app" -name ".DS_Store" -delete 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -name "._*" -delete 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -name ".git*" -delete 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -type l -delete 2>/dev/null || true
+          
+          # 移除所有签名相关文件
+          find "Payload/ECHWorkers.app" -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -name "embedded.mobileprovision" -delete 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -name "*.entitlements" -delete 2>/dev/null || true
+          
+          # 确保所有目录都有正确的权限
+          find "Payload/ECHWorkers.app" -type d -exec chmod 755 {} \; 2>/dev/null || true
+          
+          # 确保所有二进制文件都有正确的权限
+          find "Payload/ECHWorkers.app" -type f -perm +111 -exec chmod 755 {} \; 2>/dev/null || true
+          
+          # 确保所有普通文件都有正确的权限
+          find "Payload/ECHWorkers.app" -type f ! -perm +111 -exec chmod 644 {} \; 2>/dev/null || true
+          
           # 清理可能导致问题的文件和目录
           echo "清理可能导致问题的文件..."
           find "Payload/ECHWorkers.app" -name ".DS_Store" -delete 2>/dev/null || true
