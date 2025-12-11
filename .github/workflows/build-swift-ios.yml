@@ -101,11 +101,11 @@ jobs:
             echo "✅ 设置可执行权限"
           fi
           
-          # 复制Resources到.app
+          # 复制 ech-workers 到 .app 根目录 (不放在 Resources 里，避免 TrollStore 问题)
           if [ -d Resources ] && [ -n "$APP_PATH" ]; then
-            echo "复制Resources..."
-            cp -r Resources "$APP_PATH/"
-            chmod +x "$APP_PATH/Resources/ech-workers"
+            echo "复制 ech-workers..."
+            cp Resources/ech-workers "$APP_PATH/ech-workers"
+            chmod +x "$APP_PATH/ech-workers"
             echo "✅ 设置 ech-workers 可执行权限"
           fi
           
