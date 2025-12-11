@@ -1,12 +1,12 @@
-name: Build OpenWrt IPK
+name: Build OpenWrt IPK (Disabled)
 
+# 此工作流已禁用 - 当前项目只构建 iOS IPA
+# 如需构建 OpenWrt IPK，请手动触发
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'README.md'
-  workflow_dispatch:
+  workflow_dispatch:  # 只允许手动触发
+  # push:  # 禁用自动触发
+  #   branches:
+  #     - main
 
 permissions:
   contents: write
