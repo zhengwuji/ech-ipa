@@ -208,22 +208,30 @@ jobs:
               rm -rf "$APP_PATH/Frameworks/ECHClient.framework/embedded.mobileprovision" 2>/dev/null || true
               
               # 清理 framework 中所有不需要的文件（TrollStore/ldid 兼容）
-              # 删除 Headers 和 Modules 目录（包含 .h 头文件，ldid 无法处理）
+              # ldid 只能处理 Mach-O 二进制，其他文件会导致 "Unknown header magic" 错误
+              
+              # 删除所有子目录（Headers, Modules, Resources, Versions 等）
               rm -rf "$APP_PATH/Frameworks/ECHClient.framework/Headers" 2>/dev/null || true
               rm -rf "$APP_PATH/Frameworks/ECHClient.framework/Modules" 2>/dev/null || true
               rm -rf "$APP_PATH/Frameworks/ECHClient.framework/Versions" 2>/dev/null || true
+              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/Resources" 2>/dev/null || true
+              rm -rf "$APP_PATH/Frameworks/ECHClient.framework/_CodeSignature" 2>/dev/null || true
               
-              # 删除所有头文件
+              # 删除所有非必要文件
               find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.h" -delete 2>/dev/null || true
               find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.modulemap" -delete 2>/dev/null || true
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name "module.modulemap" -delete 2>/dev/null || true
-              
-              # 删除其他不需要的文件
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name ".DS_Store" -delete 2>/dev/null || true
-              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftmodule" -delete 2>/dev/null || true
+              find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftmodule" -type d -exec rm -rf {} + 2>/dev/null || true
               find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftdoc" -delete 2>/dev/null || true
               find "$APP_PATH/Frameworks/ECHClient.framework" -name "*.swiftsourceinfo" -delete 2>/dev/null || true
+              find "$APP_PATH/Frameworks/ECHClient.framework" -name ".DS_Store" -delete 2>/dev/null || true
+              find "$APP_PATH/Frameworks/ECHClient.framework" -name "._*" -delete 2>/dev/null || true
               find "$APP_PATH/Frameworks/ECHClient.framework" -type l -delete 2>/dev/null || true
+              
+              # 删除除了 ECHClient 和 Info.plist 以外的所有文件
+              find "$APP_PATH/Frameworks/ECHClient.framework" -type f ! -name "ECHClient" ! -name "Info.plist" -delete 2>/dev/null || true
+              
+              # 删除所有空目录
+              find "$APP_PATH/Frameworks/ECHClient.framework" -type d -empty -delete 2>/dev/null || true
               
               # 验证清理后 Framework 只包含必要文件
               echo "清理后的 Framework 结构:"
