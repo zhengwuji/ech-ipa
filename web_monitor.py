@@ -2,124 +2,218 @@
 import time
 from datetime import datetime
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.edge.service import Service as EdgeService
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from bs4 import BeautifulSoup
 import requests
 from PIL import Image
 import io
 import os
 import json
+from browser_detector import detect_browsers, get_browser_name, get_browser_driver_name
 
 class WebMonitor:
-    def __init__(self, url, monitor_regions=None):
+    def __init__(self, url, monitor_regions=None, browser_path=None):
         self.url = url
         self.monitor_regions = monitor_regions or []
         self.driver = None
+        self.browser_path = browser_path
+        self.browser_type = None
         self.setup_driver()
     
     def setup_driver(self):
-        """初始化浏览器驱动"""
-        import platform
-        import subprocess
+        """初始化浏览器驱动 - 自动检测并使用系统默认浏览器"""
         import shutil
         
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')  # 无头模式
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1920,1080')
-        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
         try:
-            # 首先检查Chrome是否安装
-            chrome_paths = [
-                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-                os.path.expanduser(r"~\AppData\Local\Google\Chrome\Application\chrome.exe")
-            ]
+            # 检测所有已安装的浏览器
+            browsers = detect_browsers()
             
-            chrome_path = None
-            for path in chrome_paths:
-                if os.path.exists(path):
-                    chrome_path = path
-                    break
+            if not browsers:
+                raise Exception(
+                    "未找到已安装的浏览器！\n\n"
+                    "请安装以下浏览器之一：\n"
+                    "1. Google Chrome\n"
+                    "2. Microsoft Edge\n"
+                    "3. Mozilla Firefox（仅部分支持）"
+                )
             
-            if chrome_path:
-                chrome_options.binary_location = chrome_path
+            # 优先使用默认浏览器，然后是Chrome，最后是Edge
+            browser_path = None
+            browser_type = None
             
-            # 尝试安装Chrome驱动
-            try:
-                # 清除可能损坏的驱动缓存
-                cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
-                
-                driver_path = ChromeDriverManager().install()
-                
-                # 验证驱动文件是否有效
-                if not os.path.exists(driver_path):
-                    raise Exception(f"驱动文件不存在: {driver_path}")
-                
-                # 检查文件大小（有效的驱动应该大于100KB）
-                file_size = os.path.getsize(driver_path)
-                if file_size < 100 * 1024:  # 小于100KB可能有问题
-                    print(f"警告: 驱动文件可能损坏，大小: {file_size} 字节")
-                    # 删除可能损坏的文件，重新下载
-                    try:
-                        os.remove(driver_path)
-                        driver_path = ChromeDriverManager().install()
-                    except:
-                        pass
-                
-                service = Service(driver_path)
-                self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                self.driver.set_page_load_timeout(30)  # 设置页面加载超时
-                
-            except Exception as driver_error:
-                # 如果自动下载失败，尝试其他方法
-                error_msg = str(driver_error)
-                
-                # 检查是否是WinError 193
-                if "WinError 193" in error_msg or "不是有效的Win32" in error_msg:
-                    # 清除缓存并重试
-                    try:
-                        cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
-                        if os.path.exists(cache_path):
-                            import shutil
-                            shutil.rmtree(cache_path, ignore_errors=True)
-                        # 重新下载
-                        driver_path = ChromeDriverManager().install()
-                        service = Service(driver_path)
-                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                        self.driver.set_page_load_timeout(30)
-                    except Exception as retry_error:
-                        raise Exception(
-                            f"浏览器驱动初始化失败 (WinError 193): {str(retry_error)}\n\n"
-                            f"请尝试以下解决方案：\n"
-                            f"1. 确保Chrome浏览器已正确安装\n"
-                            f"2. 手动删除驱动缓存文件夹: {cache_path}\n"
-                            f"3. 检查网络连接并重试\n"
-                            f"4. 如果问题持续，请重新安装Chrome浏览器"
-                        ) from retry_error
-                else:
-                    raise Exception(
-                        f"浏览器驱动初始化失败: {error_msg}\n\n"
-                        f"请确保：\n"
-                        f"1. 已安装Chrome浏览器\n"
-                        f"2. 网络连接正常（需要下载驱动）\n"
-                        f"3. 有足够的磁盘空间"
-                    ) from driver_error
+            if self.browser_path and os.path.exists(self.browser_path):
+                # 使用指定的浏览器路径
+                browser_path = self.browser_path
+                browser_type = get_browser_name(browser_path)
+            elif 'default' in browsers:
+                browser_path = browsers['default']
+                browser_type = get_browser_name(browser_path)
+            elif 'chrome' in browsers:
+                browser_path = browsers['chrome']
+                browser_type = 'chrome'
+            elif 'edge' in browsers:
+                browser_path = browsers['edge']
+                browser_type = 'edge'
+            else:
+                # 使用第一个找到的浏览器
+                browser_path = list(browsers.values())[0]
+                browser_type = get_browser_name(browser_path)
+            
+            self.browser_type = browser_type
+            print(f"使用浏览器: {browser_type} - {browser_path}")
+            
+            # 根据浏览器类型初始化
+            if browser_type == 'edge' or (browser_type == 'unknown' and 'edge' in browser_path.lower()):
+                self._setup_edge_driver(browser_path)
+            else:
+                # Chrome 或基于 Chromium 的浏览器
+                self._setup_chrome_driver(browser_path)
         
         except Exception as e:
             error_msg = str(e)
             print(error_msg)
             raise Exception(error_msg) from e
+    
+    def _setup_chrome_driver(self, browser_path):
+        """初始化Chrome驱动"""
+        import shutil
+        
+        options = ChromeOptions()
+        options.add_argument('--headless')  # 无头模式
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        
+        if browser_path:
+            options.binary_location = browser_path
+        
+        try:
+            cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
+            driver_path = ChromeDriverManager().install()
+            
+            # 验证驱动文件
+            if not os.path.exists(driver_path):
+                raise Exception(f"驱动文件不存在: {driver_path}")
+            
+            file_size = os.path.getsize(driver_path)
+            if file_size < 100 * 1024:
+                print(f"警告: 驱动文件可能损坏，大小: {file_size} 字节，正在重新下载...")
+                if os.path.exists(cache_path):
+                    shutil.rmtree(cache_path, ignore_errors=True)
+                driver_path = ChromeDriverManager().install()
+            
+            service = ChromeService(driver_path)
+            self.driver = webdriver.Chrome(service=service, options=options)
+            self.driver.set_page_load_timeout(30)
+            
+        except Exception as driver_error:
+            error_msg = str(driver_error)
+            
+            if "WinError 193" in error_msg or "不是有效的Win32" in error_msg:
+                # 清除缓存并重试
+                try:
+                    cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
+                    if os.path.exists(cache_path):
+                        shutil.rmtree(cache_path, ignore_errors=True)
+                    driver_path = ChromeDriverManager().install()
+                    service = ChromeService(driver_path)
+                    self.driver = webdriver.Chrome(service=service, options=options)
+                    self.driver.set_page_load_timeout(30)
+                except Exception as retry_error:
+                    raise Exception(
+                        f"浏览器驱动初始化失败 (WinError 193): {str(retry_error)}\n\n"
+                        f"请尝试以下解决方案：\n"
+                        f"1. 运行 '清理驱动缓存.bat' 清除缓存\n"
+                        f"2. 手动删除驱动缓存文件夹: {cache_path}\n"
+                        f"3. 检查网络连接并重试\n"
+                        f"4. 重新安装浏览器"
+                    ) from retry_error
+            else:
+                raise Exception(
+                    f"浏览器驱动初始化失败: {error_msg}\n\n"
+                    f"请确保：\n"
+                    f"1. 已安装浏览器\n"
+                    f"2. 网络连接正常（需要下载驱动）\n"
+                    f"3. 有足够的磁盘空间"
+                ) from driver_error
+    
+    def _setup_edge_driver(self, browser_path):
+        """初始化Edge驱动"""
+        import shutil
+        
+        options = EdgeOptions()
+        options.add_argument('--headless')  # 无头模式
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        
+        if browser_path:
+            options.binary_location = browser_path
+        
+        try:
+            cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
+            driver_path = EdgeChromiumDriverManager().install()
+            
+            # 验证驱动文件
+            if not os.path.exists(driver_path):
+                raise Exception(f"驱动文件不存在: {driver_path}")
+            
+            file_size = os.path.getsize(driver_path)
+            if file_size < 100 * 1024:
+                print(f"警告: 驱动文件可能损坏，大小: {file_size} 字节，正在重新下载...")
+                if os.path.exists(cache_path):
+                    shutil.rmtree(cache_path, ignore_errors=True)
+                driver_path = EdgeChromiumDriverManager().install()
+            
+            service = EdgeService(driver_path)
+            self.driver = webdriver.Edge(service=service, options=options)
+            self.driver.set_page_load_timeout(30)
+            
+        except Exception as driver_error:
+            error_msg = str(driver_error)
+            
+            if "WinError 193" in error_msg or "不是有效的Win32" in error_msg:
+                try:
+                    cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
+                    if os.path.exists(cache_path):
+                        shutil.rmtree(cache_path, ignore_errors=True)
+                    driver_path = EdgeChromiumDriverManager().install()
+                    service = EdgeService(driver_path)
+                    self.driver = webdriver.Edge(service=service, options=options)
+                    self.driver.set_page_load_timeout(30)
+                except Exception as retry_error:
+                    raise Exception(
+                        f"Edge浏览器驱动初始化失败 (WinError 193): {str(retry_error)}\n\n"
+                        f"请尝试以下解决方案：\n"
+                        f"1. 运行 '清理驱动缓存.bat' 清除缓存\n"
+                        f"2. 手动删除驱动缓存文件夹: {cache_path}\n"
+                        f"3. 检查网络连接并重试\n"
+                        f"4. 重新安装Edge浏览器"
+                    ) from retry_error
+            else:
+                raise Exception(
+                    f"Edge浏览器驱动初始化失败: {error_msg}\n\n"
+                    f"请确保：\n"
+                    f"1. 已安装Edge浏览器\n"
+                    f"2. 网络连接正常（需要下载驱动）\n"
+                    f"3. 有足够的磁盘空间"
+                ) from driver_error
     
     def get_page_screenshot(self, save_path=None):
         """获取整个页面截图"""

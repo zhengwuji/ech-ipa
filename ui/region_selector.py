@@ -4,9 +4,13 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QLineEdit, QSpinBox, QGroupBox, QMessageBox)
 from PyQt5.QtCore import Qt
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.edge.service import Service as EdgeService
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.edge.options import Options as EdgeOptions
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
+from browser_detector import detect_browsers, get_browser_name
 from PIL import Image
 import io
 import time
@@ -104,98 +108,124 @@ class RegionSelector(QDialog):
         pass
     
     def open_browser_selector(self):
-        """打开浏览器选择区域"""
+        """打开浏览器选择区域 - 自动使用系统默认浏览器"""
         try:
             import os
-            import platform
             import shutil
             
-            # 使用Selenium打开浏览器（非无头模式）让用户选择
-            chrome_options = Options()
-            # 不使用无头模式，让用户可以看到并交互
-            chrome_options.add_argument('--window-size=1920,1080')
-            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            chrome_options.add_experimental_option('useAutomationExtension', False)
+            # 检测已安装的浏览器
+            browsers = detect_browsers()
             
-            # 检查Chrome是否安装
-            chrome_paths = [
-                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-                os.path.expanduser(r"~\AppData\Local\Google\Chrome\Application\chrome.exe")
-            ]
-            
-            chrome_path = None
-            for path in chrome_paths:
-                if os.path.exists(path):
-                    chrome_path = path
-                    chrome_options.binary_location = path
-                    break
-            
-            if not chrome_path:
+            if not browsers:
                 QMessageBox.warning(self, "错误", 
-                    "未找到Chrome浏览器！\n\n"
-                    "请确保已安装Google Chrome浏览器。\n"
-                    "可以从以下地址下载：\n"
-                    "https://www.google.com/chrome/")
+                    "未找到已安装的浏览器！\n\n"
+                    "请安装以下浏览器之一：\n"
+                    "1. Google Chrome\n"
+                    "2. Microsoft Edge")
                 return
             
-            # 尝试安装Chrome驱动
-            try:
-                cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
-                driver_path = ChromeDriverManager().install()
-                
-                # 验证驱动文件
-                if os.path.exists(driver_path):
-                    file_size = os.path.getsize(driver_path)
-                    if file_size < 100 * 1024:
-                        # 文件可能损坏，清除缓存重试
-                        if os.path.exists(cache_path):
-                            shutil.rmtree(cache_path, ignore_errors=True)
-                        driver_path = ChromeDriverManager().install()
-                
-                service = Service(driver_path)
-                self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                self.driver.get(self.url)
-                
-                QMessageBox.information(self, "提示", 
-                    "浏览器已打开，请在页面中查看元素位置，然后在本窗口输入坐标。\n\n"
-                    "提示：可以使用浏览器开发者工具(F12)查看元素的坐标和尺寸。\n"
-                    "或者使用截图工具测量坐标。")
+            # 优先使用默认浏览器
+            browser_path = None
+            browser_type = None
             
-            except Exception as driver_error:
-                error_msg = str(driver_error)
+            if 'default' in browsers:
+                browser_path = browsers['default']
+                browser_type = get_browser_name(browser_path)
+            elif 'chrome' in browsers:
+                browser_path = browsers['chrome']
+                browser_type = 'chrome'
+            elif 'edge' in browsers:
+                browser_path = browsers['edge']
+                browser_type = 'edge'
+            else:
+                browser_path = list(browsers.values())[0]
+                browser_type = get_browser_name(browser_path)
+            
+            # 根据浏览器类型设置选项
+            if browser_type == 'edge' or (browser_type == 'unknown' and 'edge' in browser_path.lower()):
+                options = EdgeOptions()
+                options.add_argument('--window-size=1920,1080')
+                options.add_argument('--disable-blink-features=AutomationControlled')
+                options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                options.add_experimental_option('useAutomationExtension', False)
+                options.binary_location = browser_path
                 
-                # 如果是WinError 193，尝试清除缓存
-                if "WinError 193" in error_msg or "不是有效的Win32" in error_msg:
-                    try:
-                        cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
-                        if os.path.exists(cache_path):
-                            shutil.rmtree(cache_path, ignore_errors=True)
+                try:
+                    cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
+                    driver_path = EdgeChromiumDriverManager().install()
+                    
+                    if os.path.exists(driver_path):
+                        file_size = os.path.getsize(driver_path)
+                        if file_size < 100 * 1024:
+                            if os.path.exists(cache_path):
+                                shutil.rmtree(cache_path, ignore_errors=True)
+                            driver_path = EdgeChromiumDriverManager().install()
+                    
+                    service = EdgeService(driver_path)
+                    self.driver = webdriver.Edge(service=service, options=options)
+                    self.driver.get(self.url)
+                    
+                    QMessageBox.information(self, "提示", 
+                        f"已使用 {browser_type} 浏览器打开页面\n\n"
+                        "请在页面中查看元素位置，然后在本窗口输入坐标。\n\n"
+                        "提示：可以使用浏览器开发者工具(F12)查看元素的坐标和尺寸。")
+                except Exception as e:
+                    QMessageBox.warning(self, "错误", f"打开Edge浏览器失败: {str(e)}")
+            else:
+                # Chrome或基于Chromium的浏览器
+                options = ChromeOptions()
+                options.add_argument('--window-size=1920,1080')
+                options.add_argument('--disable-blink-features=AutomationControlled')
+                options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                options.add_experimental_option('useAutomationExtension', False)
+                options.binary_location = browser_path
+                
+                try:
+                    cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
+                    driver_path = ChromeDriverManager().install()
+                    
+                    if os.path.exists(driver_path):
+                        file_size = os.path.getsize(driver_path)
+                        if file_size < 100 * 1024:
+                            if os.path.exists(cache_path):
+                                shutil.rmtree(cache_path, ignore_errors=True)
+                            driver_path = ChromeDriverManager().install()
+                    
+                    service = ChromeService(driver_path)
+                    self.driver = webdriver.Chrome(service=service, options=options)
+                    self.driver.get(self.url)
+                    
+                    QMessageBox.information(self, "提示", 
+                        f"已使用 {browser_type} 浏览器打开页面\n\n"
+                        "请在页面中查看元素位置，然后在本窗口输入坐标。\n\n"
+                        "提示：可以使用浏览器开发者工具(F12)查看元素的坐标和尺寸。")
+                except Exception as driver_error:
+                    error_msg = str(driver_error)
+                    
+                    if "WinError 193" in error_msg or "不是有效的Win32" in error_msg:
+                        try:
+                            cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
+                            if os.path.exists(cache_path):
+                                shutil.rmtree(cache_path, ignore_errors=True)
+                                QMessageBox.information(self, "提示", 
+                                    "已清除驱动缓存，正在重新下载...")
+                            driver_path = ChromeDriverManager().install()
+                            service = ChromeService(driver_path)
+                            self.driver = webdriver.Chrome(service=service, options=options)
+                            self.driver.get(self.url)
+                            
                             QMessageBox.information(self, "提示", 
-                                "已清除驱动缓存，正在重新下载...\n"
-                                "这可能需要一些时间，请稍候。")
-                        driver_path = ChromeDriverManager().install()
-                        service = Service(driver_path)
-                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                        self.driver.get(self.url)
-                        
-                        QMessageBox.information(self, "提示", 
-                            "浏览器已打开，请在页面中查看元素位置，然后在本窗口输入坐标。")
-                    except Exception as retry_error:
-                        QMessageBox.critical(self, "错误", 
-                            f"无法打开浏览器 (WinError 193): {str(retry_error)}\n\n"
-                            f"解决方案：\n"
-                            f"1. 手动删除驱动缓存: {cache_path}\n"
-                            f"2. 重新安装Chrome浏览器\n"
-                            f"3. 检查防火墙和杀毒软件设置\n"
-                            f"4. 暂时可以手动输入坐标")
-                else:
-                    QMessageBox.warning(self, "错误", 
-                        f"无法打开浏览器: {error_msg}\n\n"
-                        f"请确保：\n"
-                        f"1. Chrome浏览器已安装\n"
-                        f"2. 网络连接正常")
+                                "浏览器已打开，请在页面中查看元素位置，然后在本窗口输入坐标。")
+                        except Exception as retry_error:
+                            QMessageBox.critical(self, "错误", 
+                                f"无法打开浏览器 (WinError 193): {str(retry_error)}\n\n"
+                                f"请运行 '清理驱动缓存.bat' 后再试")
+                    else:
+                        QMessageBox.warning(self, "错误", 
+                            f"无法打开浏览器: {error_msg}\n\n"
+                            f"请确保：\n"
+                            f"1. 浏览器已安装\n"
+                            f"2. 网络连接正常")
         
         except Exception as e:
             QMessageBox.critical(self, "错误", f"打开浏览器时发生错误: {str(e)}")
