@@ -70,6 +70,95 @@ jobs:
           echo "✅ ECHClient.xcframework 构建完成"
           ls -la ../ECHClient.xcframework/
           
+          # ========== 转换静态 framework 为动态库 ==========
+          echo "🔧 检查并转换 framework 类型..."
+          
+          if [ -d "../ECHClient.xcframework/ios-arm64/ECHClient.framework" ]; then
+            FRAMEWORK_DIR="../ECHClient.xcframework/ios-arm64/ECHClient.framework"
+            cd "$FRAMEWORK_DIR"
+            
+            echo "检查原始库类型:"
+            file ECHClient
+            
+            # 检查是否是静态库（ar archive）
+            if file ECHClient | grep -q "ar archive"; then
+              echo "⚠️ 检测到静态库（ar archive），开始转换为动态库..."
+              
+              # 备份原始静态库
+              cp ECHClient ECHClient_static
+              
+              # 创建临时目录用于提取
+              mkdir -p temp_objects
+              cd temp_objects
+              
+              # 提取所有 .o 文件
+              echo "提取对象文件..."
+              ar -x ../ECHClient_static
+              
+              # 列出提取的文件（限制输出）
+              OBJ_COUNT=$(ls -1 *.o 2>/dev/null | wc -l | tr -d ' ')
+              echo "提取的对象文件数量: $OBJ_COUNT"
+              ls -lh *.o 2>/dev/null | head -5 || true
+              
+              # 使用 clang 创建动态库
+              echo "正在创建动态库..."
+              if clang -dynamiclib -o ../ECHClient \
+                -arch arm64 \
+                -install_name @rpath/ECHClient.framework/ECHClient \
+                -Xlinker -rpath -Xlinker @executable_path/Frameworks \
+                -Xlinker -rpath -Xlinker @loader_path/Frameworks \
+                -Xlinker -final_output -Xlinker ECHClient \
+                -compatibility_version 1.0 \
+                -current_version 1.0 \
+                -dead_strip \
+                *.o 2>&1 | tee ../clang_output.log; then
+                echo "✅ clang 链接成功"
+              else
+                echo "❌ clang 链接失败，查看日志:"
+                cat ../clang_output.log || true
+                cd ../..
+                exit 1
+              fi
+              
+              # 返回 framework 目录
+              cd ..
+              
+              # 清理临时文件
+              echo "清理临时文件..."
+              rm -rf temp_objects ECHClient_static clang_output.log
+              
+              # 验证生成的动态库
+              echo "验证生成的动态库:"
+              file ECHClient
+              lipo -info ECHClient
+              echo "Mach-O header:"
+              otool -hv ECHClient 2>/dev/null | head -10 || true
+              
+              # 确认是动态库类型
+              if file ECHClient | grep -qE "(dynamically linked shared library|Mach-O.*dynamic)"; then
+                echo "✅ 成功转换为动态库"
+              else
+                echo "⚠️ 警告：生成的文件可能不是动态库"
+                file ECHClient
+                echo "尝试继续，但可能会失败..."
+              fi
+              
+              # 设置正确的权限
+              chmod 755 ECHClient
+              
+              # 返回 echclient 目录
+              cd ../../..
+            elif file ECHClient | grep -qE "(dynamically linked|Mach-O.*executable|Mach-O.*bundle)"; then
+              echo "✅ 已经是动态库或可执行文件，无需转换"
+              cd ../../..
+            else
+              echo "⚠️ 未知的文件类型:"
+              file ECHClient
+              cd ../../..
+            fi
+          fi
+          echo "========== Framework 类型转换完成 =========="
+          
           # 验证framework架构并移除模拟器架构（如果存在）
           if [ -d "../ECHClient.xcframework/ios-arm64/ECHClient.framework" ]; then
             echo "检查 arm64 真机 framework..."
