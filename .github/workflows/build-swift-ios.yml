@@ -22,6 +22,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      
+      - name: Get commit hash
+        id: commit
+        run: |
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "✅ Commit hash: $COMMIT_HASH"
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -361,12 +368,19 @@ jobs:
             fi
           fi
           
+          # 获取 commit hash
+          COMMIT_HASH="${{ steps.commit.outputs.commit_hash }}"
+          IPA_NAME="${COMMIT_HASH}-ECHWorkers-Swift-unsigned.ipa"
+          
           # 打包为 IPA（使用存储模式，避免压缩损坏二进制文件）
-          zip -0 -r ../ECHWorkers-Swift-unsigned.ipa Payload
+          zip -0 -r "../${IPA_NAME}" Payload
           
           cd ..
-          echo "✅ IPA打包完成"
-          ls -lh ECHWorkers-Swift-unsigned.ipa
+          echo "✅ IPA打包完成: ${IPA_NAME}"
+          ls -lh "${IPA_NAME}"
+          
+          # 将 IPA 文件名保存到环境变量
+          echo "IPA_NAME=${IPA_NAME}" >> $GITHUB_ENV
       
       - name: Generate changelog
         id: changelog
@@ -393,7 +407,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ECHWorkers-Swift-iOS
-          path: "ECHWorkers-Swift-unsigned.ipa"
+          path: "${{ env.IPA_NAME }}"
       
       - name: Generate release tag
         id: tag
@@ -447,8 +461,9 @@ jobs:
             **版本**: 1.2.0-Swift
             **最低iOS版本**: 14.0
             **架构**: arm64
+            **Commit**: ${{ steps.commit.outputs.commit_hash }}
           files: |
-            ECHWorkers-Swift-unsigned.ipa
+            ${{ env.IPA_NAME }}
             CHANGELOG.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
