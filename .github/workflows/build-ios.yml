@@ -41,7 +41,8 @@ jobs:
       - name: Build ech-workers binary for iOS
         run: |
           # 编译 ech-workers 为 iOS arm64
-          echo "编译 ech-workers 为 iOS..."
+          # 注意: iOS 使用 darwin/arm64，不是 ios/arm64
+          echo "编译 ech-workers 为 iOS (darwin/arm64)..."
           
           # 使用现有的 go.mod
           cd ech-wk-package/src
@@ -49,16 +50,17 @@ jobs:
           # 确保依赖已下载
           go mod download
           
-          # 编译为iOS arm64架构（静态链接）
+          # 编译为 iOS arm64 架构（darwin 是 iOS/macOS 的内核）
           cd ../..
-          GOOS=ios GOARCH=arm64 CGO_ENABLED=0 go build -o ech-workers-ios -ldflags="-s -w" ech-wk-package/src/ech-workers.go
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o ech-workers-ios -ldflags="-s -w" ech-wk-package/src/ech-workers.go
           
           # 创建资源目录并复制二进制文件
           mkdir -p src/echipa/resources
           cp ech-workers-ios src/echipa/resources/ech-workers
           chmod +x src/echipa/resources/ech-workers
           
-          echo "ech-workers iOS编译完成"
+          echo "ech-workers iOS编译完成 (darwin/arm64)"
+          file src/echipa/resources/ech-workers
           ls -lh src/echipa/resources/ech-workers
 
       
