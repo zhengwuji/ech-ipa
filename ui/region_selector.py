@@ -3,11 +3,16 @@ import sys
 import os
 
 # 确保可以导入上级目录的模块
-if __name__ == '__main__' or (hasattr(sys, 'frozen') and sys.frozen):
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
+if getattr(sys, 'frozen', False):
+    # 打包后的exe模式
+    base_path = sys._MEIPASS
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.insert(0, current_dir)
+    if base_path not in sys.path:
+        sys.path.insert(0, base_path)
 else:
+    # 开发模式
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if parent_dir not in sys.path:
         sys.path.insert(0, parent_dir)
@@ -23,15 +28,26 @@ from selenium.webdriver.edge.options import Options as EdgeOptions
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
+# 导入browser_detector
 try:
     from browser_detector import detect_browsers, get_browser_name
 except ImportError:
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("browser_detector", os.path.join(parent_dir, "browser_detector.py"))
-    browser_detector = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(browser_detector)
-    detect_browsers = browser_detector.detect_browsers
-    get_browser_name = browser_detector.get_browser_name
+    try:
+        if getattr(sys, 'frozen', False):
+            import importlib
+            browser_detector = importlib.import_module('browser_detector')
+            detect_browsers = browser_detector.detect_browsers
+            get_browser_name = browser_detector.get_browser_name
+        else:
+            parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("browser_detector", os.path.join(parent_dir, "browser_detector.py"))
+            browser_detector = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(browser_detector)
+            detect_browsers = browser_detector.detect_browsers
+            get_browser_name = browser_detector.get_browser_name
+    except Exception as e:
+        raise ImportError(f"无法导入 browser_detector: {e}")
 
 from PIL import Image
 import io
