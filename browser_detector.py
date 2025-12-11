@@ -13,12 +13,18 @@ def get_default_browser():
             prog_id = winreg.QueryValueEx(key, "ProgId")[0]
         
         # 根据ProgId查找浏览器路径
-        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, f"{prog_id}\shell\open\command") as key:
-            command = winreg.QueryValueEx(key, "")[0]
-            # 移除引号和参数
-            browser_path = command.split('"')[1] if '"' in command else command.split()[0]
-            if os.path.exists(browser_path):
-                return browser_path
+        try:
+            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, f"{prog_id}\shell\open\command") as key:
+                command = winreg.QueryValueEx(key, "")[0]
+                # 移除引号和参数
+                browser_path = command.split('"')[1] if '"' in command else command.split()[0]
+                # 清理路径中的转义字符
+                browser_path = browser_path.replace('\\', os.sep).replace('"', '')
+                if os.path.exists(browser_path):
+                    return browser_path
+        except:
+            # 如果直接查找失败，尝试常见的浏览器路径
+            pass
     except:
         pass
     return None
