@@ -18,6 +18,7 @@ import io
 import os
 import json
 from browser_detector import detect_browsers, get_browser_name, get_browser_driver_name
+from driver_validator import is_valid_exe, test_driver
 
 class WebMonitor:
     def __init__(self, url, monitor_regions=None, browser_path=None):
@@ -101,53 +102,86 @@ class WebMonitor:
         
         try:
             cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
-            driver_path = ChromeDriverManager().install()
+            max_retries = 3
             
-            # 验证驱动文件
-            if not os.path.exists(driver_path):
-                raise Exception(f"驱动文件不存在: {driver_path}")
-            
-            file_size = os.path.getsize(driver_path)
-            if file_size < 100 * 1024:
-                print(f"警告: 驱动文件可能损坏，大小: {file_size} 字节，正在重新下载...")
-                if os.path.exists(cache_path):
-                    shutil.rmtree(cache_path, ignore_errors=True)
-                driver_path = ChromeDriverManager().install()
-            
-            service = ChromeService(driver_path)
-            self.driver = webdriver.Chrome(service=service, options=options)
-            self.driver.set_page_load_timeout(30)
-            
-        except Exception as driver_error:
-            error_msg = str(driver_error)
-            
-            if "WinError 193" in error_msg or "不是有效的Win32" in error_msg:
-                # 清除缓存并重试
+            for retry in range(max_retries):
                 try:
-                    cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
-                    if os.path.exists(cache_path):
-                        shutil.rmtree(cache_path, ignore_errors=True)
+                    if retry > 0:
+                        # 清除缓存并重新下载
+                        if os.path.exists(cache_path):
+                            shutil.rmtree(cache_path, ignore_errors=True)
+                        print(f"第 {retry + 1} 次尝试下载驱动...")
+                    
                     driver_path = ChromeDriverManager().install()
+                    
+                    # 验证驱动文件存在
+                    if not os.path.exists(driver_path):
+                        if retry < max_retries - 1:
+                            continue
+                        raise Exception(f"驱动文件不存在: {driver_path}")
+                    
+                    # 验证文件大小
+                    file_size = os.path.getsize(driver_path)
+                    if file_size < 100 * 1024:
+                        print(f"警告: 驱动文件太小 ({file_size} 字节)，可能损坏")
+                        if retry < max_retries - 1:
+                            continue
+                    
+                    # 验证PE文件格式
+                    if not is_valid_exe(driver_path):
+                        print(f"警告: 驱动文件格式无效，重新下载...")
+                        if retry < max_retries - 1:
+                            continue
+                        raise Exception(f"驱动文件格式无效: {driver_path}")
+                    
+                    # 测试驱动是否可以运行
+                    if not test_driver(driver_path):
+                        print(f"警告: 驱动文件无法运行，重新下载...")
+                        if retry < max_retries - 1:
+                            continue
+                    
+                    # 尝试初始化浏览器
                     service = ChromeService(driver_path)
                     self.driver = webdriver.Chrome(service=service, options=options)
                     self.driver.set_page_load_timeout(30)
-                except Exception as retry_error:
+                    print(f"✓ Chrome驱动初始化成功 (大小: {file_size} 字节)")
+                    return
+                    
+                except Exception as e:
+                    error_msg = str(e)
+                    if "WinError 193" in error_msg or "不是有效的Win32" in error_msg:
+                        if retry < max_retries - 1:
+                            print(f"驱动验证失败，重试中... (尝试 {retry + 1}/{max_retries})")
+                            continue
+                    raise
+            
+            # 如果所有重试都失败
+            raise Exception("驱动下载和验证失败，已尝试多次")
+            
+            except Exception as driver_error:
+                error_msg = str(driver_error)
+                cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
+                
+                if "WinError 193" in error_msg or "不是有效的Win32" in error_msg:
                     raise Exception(
-                        f"浏览器驱动初始化失败 (WinError 193): {str(retry_error)}\n\n"
-                        f"请尝试以下解决方案：\n"
-                        f"1. 运行 '清理驱动缓存.bat' 清除缓存\n"
-                        f"2. 手动删除驱动缓存文件夹: {cache_path}\n"
-                        f"3. 检查网络连接并重试\n"
-                        f"4. 重新安装浏览器"
-                    ) from retry_error
-            else:
-                raise Exception(
-                    f"浏览器驱动初始化失败: {error_msg}\n\n"
-                    f"请确保：\n"
-                    f"1. 已安装浏览器\n"
-                    f"2. 网络连接正常（需要下载驱动）\n"
-                    f"3. 有足够的磁盘空间"
-                ) from driver_error
+                        f"浏览器驱动初始化失败 (WinError 193)\n\n"
+                        f"这通常是因为驱动文件损坏或不兼容。\n\n"
+                        f"请按以下步骤操作：\n"
+                        f"1. 关闭此程序\n"
+                        f"2. 运行 '清理驱动缓存.bat' 或手动删除: {cache_path}\n"
+                        f"3. 如果安装了防病毒软件，请临时禁用或添加例外\n"
+                        f"4. 重新启动程序，程序会自动重新下载驱动\n"
+                        f"5. 如果问题持续，请检查网络连接或使用VPN"
+                    ) from driver_error
+                else:
+                    raise Exception(
+                        f"浏览器驱动初始化失败: {error_msg}\n\n"
+                        f"请确保：\n"
+                        f"1. 已安装浏览器\n"
+                        f"2. 网络连接正常（需要下载驱动）\n"
+                        f"3. 有足够的磁盘空间\n"
+                        f"4. 防病毒软件未阻止驱动下载"
+                    ) from driver_error
     
     def _setup_edge_driver(self, browser_path):
         """初始化Edge驱动"""
@@ -168,22 +202,50 @@ class WebMonitor:
         
         try:
             cache_path = os.path.join(os.path.expanduser("~"), ".wdm")
-            driver_path = EdgeChromiumDriverManager().install()
+            max_retries = 3
             
-            # 验证驱动文件
-            if not os.path.exists(driver_path):
-                raise Exception(f"驱动文件不存在: {driver_path}")
+            for retry in range(max_retries):
+                try:
+                    if retry > 0:
+                        if os.path.exists(cache_path):
+                            shutil.rmtree(cache_path, ignore_errors=True)
+                        print(f"第 {retry + 1} 次尝试下载Edge驱动...")
+                    
+                    driver_path = EdgeChromiumDriverManager().install()
+                    
+                    if not os.path.exists(driver_path):
+                        if retry < max_retries - 1:
+                            continue
+                        raise Exception(f"驱动文件不存在: {driver_path}")
+                    
+                    file_size = os.path.getsize(driver_path)
+                    if file_size < 100 * 1024:
+                        if retry < max_retries - 1:
+                            continue
+                    
+                    if not is_valid_exe(driver_path):
+                        if retry < max_retries - 1:
+                            continue
+                        raise Exception(f"驱动文件格式无效: {driver_path}")
+                    
+                    if not test_driver(driver_path):
+                        if retry < max_retries - 1:
+                            continue
+                    
+                    service = EdgeService(driver_path)
+                    self.driver = webdriver.Edge(service=service, options=options)
+                    self.driver.set_page_load_timeout(30)
+                    print(f"✓ Edge驱动初始化成功 (大小: {file_size} 字节)")
+                    return
+                    
+                except Exception as e:
+                    error_msg = str(e)
+                    if "WinError 193" in error_msg or "不是有效的Win32" in error_msg:
+                        if retry < max_retries - 1:
+                            continue
+                    raise
             
-            file_size = os.path.getsize(driver_path)
-            if file_size < 100 * 1024:
-                print(f"警告: 驱动文件可能损坏，大小: {file_size} 字节，正在重新下载...")
-                if os.path.exists(cache_path):
-                    shutil.rmtree(cache_path, ignore_errors=True)
-                driver_path = EdgeChromiumDriverManager().install()
-            
-            service = EdgeService(driver_path)
-            self.driver = webdriver.Edge(service=service, options=options)
-            self.driver.set_page_load_timeout(30)
+            raise Exception("驱动下载和验证失败，已尝试多次")
             
         except Exception as driver_error:
             error_msg = str(driver_error)
