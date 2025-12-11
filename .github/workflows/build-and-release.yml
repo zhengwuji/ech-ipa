@@ -27,6 +27,7 @@ jobs:
     
     - name: Read version
       id: version
+      shell: pwsh
       run: |
         $version = (Get-Content version.json | ConvertFrom-Json).version
         echo "version=$version" >> $env:GITHUB_OUTPUT
