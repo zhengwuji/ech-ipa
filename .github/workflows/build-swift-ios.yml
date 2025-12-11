@@ -256,10 +256,7 @@ jobs:
               # 只复制 Mach-O 二进制文件（这是唯一需要的文件）
               cp "ECHClient.xcframework/ios-arm64/ECHClient.framework/ECHClient" "$APP_PATH/Frameworks/ECHClient.framework/"
               
-              echo "彻底清理 framework（TrollStore/ldid 兼容模式）..."
-              
-              # 移除签名
-              codesign --remove-signature "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" 2>/dev/null || true
+              echo "设置 framework 权限和结构..."
               
               # 确保二进制文件有正确的权限
               chmod 755 "$APP_PATH/Frameworks/ECHClient.framework/ECHClient"
