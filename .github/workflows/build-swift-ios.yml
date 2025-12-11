@@ -38,12 +38,6 @@ jobs:
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          
-          # 确保 golang.org/x/mobile 包在模块缓存中
-          go get golang.org/x/mobile/bind@latest
-          go get golang.org/x/mobile/bind/objc@latest
-          go get golang.org/x/mobile/bind/seq@latest
-          
           gomobile init
           echo "✅ gomobile 安装完成"
       
@@ -55,8 +49,11 @@ jobs:
           go mod tidy
           go mod download
           
-          # 确保 x/mobile 在模块缓存中
+          # 确保 golang.org/x/mobile 所有子包都在模块缓存中
+          go get golang.org/x/mobile@latest
           go get golang.org/x/mobile/bind@latest
+          go get golang.org/x/mobile/bind/objc@latest
+          go get golang.org/x/mobile/bind/seq@latest
           
           # 使用 gomobile 构建 iOS framework
           echo "正在构建 ECHClient.xcframework..."
