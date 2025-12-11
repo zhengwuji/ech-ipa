@@ -241,6 +241,34 @@ jobs:
               fi
               
               echo "✅ ECHClient.framework 已复制并验证"
+              
+              # 最终验证 framework 目录结构
+              echo "验证 framework 最终结构..."
+              if [ ! -d "$APP_PATH/Frameworks/ECHClient.framework" ]; then
+                echo "❌ Framework 目录不存在"
+                exit 1
+              fi
+              
+              # 列出 framework 中的所有文件
+              echo "Framework 文件列表:"
+              find "$APP_PATH/Frameworks/ECHClient.framework" -type f | sort
+              
+              # 确保 framework 目录有正确的权限
+              chmod 755 "$APP_PATH/Frameworks/ECHClient.framework"
+              
+              # 验证 framework 中只有必要的文件
+              FRAMEWORK_FILES=$(find "$APP_PATH/Frameworks/ECHClient.framework" -type f | wc -l)
+              echo "Framework 文件数量: $FRAMEWORK_FILES"
+              
+              # 确保没有意外的文件类型
+              find "$APP_PATH/Frameworks/ECHClient.framework" -type f | while read f; do
+                FILE_TYPE=$(file "$f" | cut -d: -f2)
+                if echo "$FILE_TYPE" | grep -q "Mach-O\|XML\|ASCII\|text\|empty"; then
+                  echo "✅ 有效文件: $f ($FILE_TYPE)"
+                else
+                  echo "⚠️  警告: 意外的文件类型: $f ($FILE_TYPE)"
+                fi
+              done
             fi
           fi
           
