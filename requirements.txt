@@ -1,14 +1,7 @@
-selenium==4.15.2
-beautifulsoup4==4.12.2
-requests==2.31.0
-Pillow==10.1.0
 PyQt5==5.15.10
-PyQt5-Qt5==5.15.2
-PyQt5-sip==12.13.0
-pyautogui==0.9.54
-opencv-python==4.8.1.78
-numpy==1.26.2
-pyyaml==6.0.1
-webdriver-manager==4.0.1
-pywin32==306
+playwright==1.48.0
+Pillow==10.4.0
+pytesseract==0.3.10
+pyyaml==6.0.2
+keyboard==0.13.5
 

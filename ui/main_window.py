@@ -1,525 +1,199 @@
-# 主窗口UI
-import sys
 import os
-
-# 确保可以导入上级目录的模块
-if getattr(sys, 'frozen', False):
-    # 打包后的exe模式
-    base_path = sys._MEIPASS
-    # 添加当前目录和base_path到路径
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    if current_dir not in sys.path:
-        sys.path.insert(0, current_dir)
-    if base_path not in sys.path:
-        sys.path.insert(0, base_path)
-else:
-    # 开发模式
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QPushButton, QLabel, QLineEdit, QSpinBox,
-                             QTextEdit, QFileDialog, QMessageBox, QGroupBox,
-                             QTableWidget, QTableWidgetItem, QHeaderView,
-                             QDateTimeEdit, QScrollArea, QFrame)
-from PyQt5.QtCore import Qt, QTimer, QDateTime, pyqtSignal
-from PyQt5.QtGui import QPixmap, QImage, QFont
-
-# 导入项目模块
-try:
-    # 先尝试直接导入
-    import config
-    from web_monitor import WebMonitor
-except ImportError:
-    # 如果直接导入失败，使用备用方法
-    try:
-        # 尝试从当前路径导入
-        if getattr(sys, 'frozen', False):
-            base_path = sys._MEIPASS
-            import importlib
-            config = importlib.import_module('config')
-            web_monitor = importlib.import_module('web_monitor')
-            WebMonitor = web_monitor.WebMonitor
-        else:
-            # 开发模式下的备用导入
-            parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            import importlib.util
-            
-            config_path = os.path.join(parent_dir, "config.py")
-            if os.path.exists(config_path):
-                spec = importlib.util.spec_from_file_location("config", config_path)
-                config = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(config)
-            else:
-                raise ImportError(f"找不到 config.py: {config_path}")
-            
-            web_monitor_path = os.path.join(parent_dir, "web_monitor.py")
-            if os.path.exists(web_monitor_path):
-                spec = importlib.util.spec_from_file_location("web_monitor", web_monitor_path)
-                web_monitor = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(web_monitor)
-                WebMonitor = web_monitor.WebMonitor
-            else:
-                raise ImportError(f"找不到 web_monitor.py: {web_monitor_path}")
-    except Exception as e:
-        raise ImportError(f"无法导入必要的模块: {e}")
-
-from datetime import datetime
-import json
 import shutil
+import threading
+from datetime import datetime
 
-class MainWindow(QMainWindow):
+from PyQt5 import QtCore, QtWidgets
+import keyboard
+
+import config
+import monitor
+from ui.region_selector import RegionSelector
+import version
+
+
+class MainWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-        try:
-            self.config = config.load_config()
-            try:
-                config.ensure_directories(self.config)
-            except Exception as e:
-                print(f"创建目录时出错: {e}")
-            
-            self.monitor = None
-            self.monitoring = False
-            self.timer = QTimer()
-            self.timer.timeout.connect(self.check_changes)
-            
-            self.init_ui()
-            self.load_config_to_ui()
-        except Exception as e:
-            import traceback
-            error_msg = f"初始化程序时出错:\n{str(e)}\n\n详细信息:\n{traceback.format_exc()}"
-            QMessageBox.critical(None, "严重错误", error_msg)
-            print(error_msg)
-            raise
-    
-    def init_ui(self):
-        """初始化UI"""
-        self.setWindowTitle("网站监控工具 - 实时检测销售量和价格")
-        self.setGeometry(100, 100, 1200, 800)
-        
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
-        
-        # 顶部设置区域
-        settings_group = QGroupBox("设置")
-        settings_layout = QVBoxLayout()
-        
-        # URL输入
-        url_layout = QHBoxLayout()
-        url_layout.addWidget(QLabel("监控网址:"))
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("请输入要监控的网站URL")
-        url_layout.addWidget(self.url_input)
-        settings_layout.addLayout(url_layout)
-        
-        # 保存路径
-        path_layout = QHBoxLayout()
-        path_layout.addWidget(QLabel("保存路径:"))
-        self.save_path_input = QLineEdit()
-        self.save_path_input.setReadOnly(True)
-        path_layout.addWidget(self.save_path_input)
-        self.browse_btn = QPushButton("浏览")
-        self.browse_btn.clicked.connect(self.browse_save_path)
-        path_layout.addWidget(self.browse_btn)
-        settings_layout.addLayout(path_layout)
-        
-        # 截图保存路径
-        screenshot_path_layout = QHBoxLayout()
-        screenshot_path_layout.addWidget(QLabel("截图路径:"))
-        self.screenshot_path_input = QLineEdit()
-        self.screenshot_path_input.setReadOnly(True)
-        screenshot_path_layout.addWidget(self.screenshot_path_input)
-        self.browse_screenshot_btn = QPushButton("浏览")
-        self.browse_screenshot_btn.clicked.connect(self.browse_screenshot_path)
-        screenshot_path_layout.addWidget(self.browse_screenshot_btn)
-        settings_layout.addLayout(screenshot_path_layout)
-        
-        # 检测间隔
-        interval_layout = QHBoxLayout()
-        interval_layout.addWidget(QLabel("检测间隔(秒):"))
-        self.interval_spin = QSpinBox()
+        self.setWindowTitle("网站监控工具 - Windows10 样式")
+        self.conf = config.load_config()
+        self.worker = None
+        self.hotkey_handle = None
+        self._build_ui()
+        self._load_conf_to_form()
+        self._bind_hotkey()
+
+    def _build_ui(self):
+        layout = QtWidgets.QVBoxLayout()
+
+        form = QtWidgets.QFormLayout()
+        self.url_edit = QtWidgets.QLineEdit()
+        form.addRow("监控网址：", self.url_edit)
+
+        self.interval_spin = QtWidgets.QSpinBox()
         self.interval_spin.setMinimum(60)
         self.interval_spin.setMaximum(3600)
-        self.interval_spin.setValue(60)
-        self.interval_spin.setSuffix(" 秒")
-        interval_layout.addWidget(self.interval_spin)
-        interval_layout.addStretch()
-        settings_layout.addLayout(interval_layout)
-        
-        # 控制按钮
-        btn_layout = QHBoxLayout()
-        self.start_btn = QPushButton("开始监控")
-        self.start_btn.clicked.connect(self.toggle_monitoring)
-        self.start_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
-        btn_layout.addWidget(self.start_btn)
-        
-        self.save_config_btn = QPushButton("保存设置")
-        self.save_config_btn.clicked.connect(self.save_settings)
-        btn_layout.addWidget(self.save_config_btn)
-        
-        btn_layout.addStretch()
-        settings_layout.addLayout(btn_layout)
-        
-        settings_group.setLayout(settings_layout)
-        layout.addWidget(settings_group)
-        
-        # 监控区域标记
-        region_group = QGroupBox("监控区域")
-        region_layout = QVBoxLayout()
-        
-        region_btn_layout = QHBoxLayout()
-        self.add_region_btn = QPushButton("添加监控区域（截图标记）")
-        self.add_region_btn.clicked.connect(self.add_monitor_region)
-        region_btn_layout.addWidget(self.add_region_btn)
-        
-        self.clear_regions_btn = QPushButton("清空区域")
-        self.clear_regions_btn.clicked.connect(self.clear_monitor_regions)
-        region_btn_layout.addWidget(self.clear_regions_btn)
-        region_btn_layout.addStretch()
-        region_layout.addLayout(region_btn_layout)
-        
-        self.region_table = QTableWidget()
-        self.region_table.setColumnCount(5)
-        self.region_table.setHorizontalHeaderLabels(['名称', 'X坐标', 'Y坐标', '宽度', '高度'])
-        self.region_table.horizontalHeader().setStretchLastSection(True)
-        region_layout.addWidget(self.region_table)
-        
-        region_group.setLayout(region_layout)
-        layout.addWidget(region_group)
-        
-        # 变化记录
-        changes_group = QGroupBox("变化记录")
-        changes_layout = QVBoxLayout()
-        
-        self.changes_text = QTextEdit()
-        self.changes_text.setReadOnly(True)
-        self.changes_text.setFont(QFont("Courier", 9))
-        changes_layout.addWidget(self.changes_text)
-        
-        changes_group.setLayout(changes_layout)
-        layout.addWidget(changes_group)
-        
-        # 状态栏
-        self.statusBar().showMessage("就绪")
-    
-    def load_config_to_ui(self):
-        """加载配置到UI"""
-        try:
-            self.url_input.setText(self.config.get('target_url', ''))
-            save_path = self.config.get('save_path', '')
-            screenshot_path = self.config.get('screenshot_path', '')
-            
-            # 确保路径不为空，如果为空则使用默认值
-            if not save_path:
-                from pathlib import Path
-                save_path = str(Path.home() / 'Desktop' / 'jianche1')
-            
-            if not screenshot_path:
-                from pathlib import Path
-                screenshot_path = str(Path.home() / 'Desktop' / 'jianche1' / 'screenshots')
-            
-            self.save_path_input.setText(save_path)
-            self.screenshot_path_input.setText(screenshot_path)
-            self.interval_spin.setValue(self.config.get('check_interval', 60))
-            self.load_regions_to_table()
-        except Exception as e:
-            print(f"加载配置到UI时出错: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    def browse_save_path(self):
-        """浏览保存路径"""
-        try:
-            current_path = self.save_path_input.text()
-            if not current_path:
-                from pathlib import Path
-                current_path = str(Path.home() / 'Desktop')
-            
-            path = QFileDialog.getExistingDirectory(self, "选择保存路径", current_path)
-            if path:
-                self.save_path_input.setText(path)
-        except Exception as e:
-            QMessageBox.warning(self, "错误", f"选择路径时出错: {str(e)}")
-    
-    def browse_screenshot_path(self):
-        """浏览截图保存路径"""
-        try:
-            current_path = self.screenshot_path_input.text()
-            if not current_path:
-                from pathlib import Path
-                current_path = str(Path.home() / 'Desktop')
-            
-            path = QFileDialog.getExistingDirectory(self, "选择截图保存路径", current_path)
-            if path:
-                self.screenshot_path_input.setText(path)
-        except Exception as e:
-            QMessageBox.warning(self, "错误", f"选择路径时出错: {str(e)}")
-    
-    def add_monitor_region(self):
-        """添加监控区域（通过截图标记）"""
-        if not self.url_input.text():
-            QMessageBox.warning(self, "提示", "请先输入监控网址")
+        form.addRow("检测间隔(秒)：", self.interval_spin)
+
+        self.save_path_edit = QtWidgets.QLineEdit()
+        self.save_path_btn = QtWidgets.QPushButton("浏览")
+        self.save_path_btn.clicked.connect(self._choose_save_path)
+        sp_row = QtWidgets.QHBoxLayout()
+        sp_row.addWidget(self.save_path_edit)
+        sp_row.addWidget(self.save_path_btn)
+        form.addRow("数据保存路径：", sp_row)
+
+        self.screenshot_path_edit = QtWidgets.QLineEdit()
+        self.screenshot_path_btn = QtWidgets.QPushButton("浏览")
+        self.screenshot_path_btn.clicked.connect(self._choose_screenshot_path)
+        sc_row = QtWidgets.QHBoxLayout()
+        sc_row.addWidget(self.screenshot_path_edit)
+        sc_row.addWidget(self.screenshot_path_btn)
+        form.addRow("截图保存路径：", sc_row)
+
+        self.hotkey_edit = QtWidgets.QLineEdit()
+        self.hotkey_edit.setPlaceholderText("例如：F9 或 ctrl+shift+s")
+        form.addRow("截图快捷键：", self.hotkey_edit)
+
+        layout.addLayout(form)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        self.capture_btn = QtWidgets.QPushButton("获取页面截图并选择区域")
+        self.capture_btn.clicked.connect(self._capture_reference)
+        self.start_btn = QtWidgets.QPushButton("开始监控")
+        self.start_btn.clicked.connect(self._toggle_monitor)
+        btn_row.addWidget(self.capture_btn)
+        btn_row.addWidget(self.start_btn)
+        layout.addLayout(btn_row)
+
+        self.status_label = QtWidgets.QLabel("就绪")
+        layout.addWidget(self.status_label)
+
+        self.log_view = QtWidgets.QTextEdit()
+        self.log_view.setReadOnly(True)
+        layout.addWidget(self.log_view)
+
+        self.setLayout(layout)
+        self.resize(900, 600)
+
+    def _load_conf_to_form(self):
+        self.url_edit.setText(self.conf.get("target_url", ""))
+        self.interval_spin.setValue(int(self.conf.get("check_interval", 60)))
+        self.save_path_edit.setText(self.conf.get("save_path", ""))
+        self.screenshot_path_edit.setText(self.conf.get("screenshot_path", ""))
+        self.hotkey_edit.setText(self.conf.get("hotkey", "F9"))
+
+    def _read_form_to_conf(self):
+        self.conf["target_url"] = self.url_edit.text().strip()
+        self.conf["check_interval"] = max(60, self.interval_spin.value())
+        self.conf["save_path"] = self.save_path_edit.text().strip()
+        self.conf["screenshot_path"] = self.screenshot_path_edit.text().strip()
+        self.conf["data_path"] = self.conf["save_path"]
+        self.conf["hotkey"] = self.hotkey_edit.text().strip() or "F9"
+        config.save_config(self.conf)
+
+    def _choose_save_path(self):
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "选择数据保存路径", self.save_path_edit.text())
+        if path:
+            self.save_path_edit.setText(path)
+            self._read_form_to_conf()
+
+    def _choose_screenshot_path(self):
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "选择截图保存路径", self.screenshot_path_edit.text())
+        if path:
+            self.screenshot_path_edit.setText(path)
+            self._read_form_to_conf()
+
+    def _capture_reference(self):
+        self._read_form_to_conf()
+        url = self.conf.get("target_url", "").strip()
+        if not url:
+            self._log("请先填写监控网址")
             return
-        
-        # 打开截图标记窗口
-        from ui.region_selector import RegionSelector
-        selector = RegionSelector(self.url_input.text())
-        if selector.exec_():
-            region = selector.get_region()
-            if region:
-                regions = self.config.get('monitor_regions', [])
-                regions.append(region)
-                self.config['monitor_regions'] = regions
-                self.load_regions_to_table()
-    
-    def load_regions_to_table(self):
-        """加载区域到表格"""
-        regions = self.config.get('monitor_regions', [])
-        self.region_table.setRowCount(len(regions))
-        for i, region in enumerate(regions):
-            self.region_table.setItem(i, 0, QTableWidgetItem(region.get('name', f'区域{i+1}')))
-            self.region_table.setItem(i, 1, QTableWidgetItem(str(region.get('x', 0))))
-            self.region_table.setItem(i, 2, QTableWidgetItem(str(region.get('y', 0))))
-            self.region_table.setItem(i, 3, QTableWidgetItem(str(region.get('width', 0))))
-            self.region_table.setItem(i, 4, QTableWidgetItem(str(region.get('height', 0))))
-    
-    def clear_monitor_regions(self):
-        """清空监控区域"""
-        reply = QMessageBox.question(self, "确认", "确定要清空所有监控区域吗？",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            self.config['monitor_regions'] = []
-            self.load_regions_to_table()
-    
-    def save_settings(self):
-        """保存设置"""
+
+        def task():
+            self._set_status("正在获取页面截图...")
+            shot_path = self._quick_capture(url)
+            if not shot_path:
+                self._set_status("截图失败")
+                return
+            self._set_status("请选择要监控的区域")
+
+            def open_selector():
+                selector = RegionSelector(shot_path, self._on_region_selected)
+                selector.show()
+                selector.raise_()
+                selector.activateWindow()
+
+            QtCore.QTimer.singleShot(0, open_selector)
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _quick_capture(self, url):
+        screenshot_dir = self.conf.get("screenshot_path", ".")
+        os.makedirs(screenshot_dir, exist_ok=True)
+        shot_file = os.path.join(screenshot_dir, f"ref_{monitor.timestamp()}.png")
         try:
-            # 验证路径
-            save_path = self.save_path_input.text().strip()
-            screenshot_path = self.screenshot_path_input.text().strip()
-            
-            if not save_path:
-                QMessageBox.warning(self, "错误", "请设置保存路径")
-                return
-            
-            if not screenshot_path:
-                QMessageBox.warning(self, "错误", "请设置截图保存路径")
-                return
-            
-            self.config['target_url'] = self.url_input.text().strip()
-            self.config['save_path'] = save_path
-            self.config['screenshot_path'] = screenshot_path
-            self.config['check_interval'] = self.interval_spin.value()
-            
-            # 保存配置
-            config.save_config(self.config)
-            
-            # 确保目录存在
-            try:
-                config.ensure_directories(self.config)
-            except Exception as e:
-                QMessageBox.warning(self, "警告", f"创建目录时出错: {str(e)}\n但设置已保存")
-            
-            QMessageBox.information(self, "成功", "设置已保存")
-        
-        except Exception as e:
-            import traceback
-            error_msg = f"保存设置时出错:\n{str(e)}\n\n详细信息:\n{traceback.format_exc()}"
-            QMessageBox.critical(self, "错误", error_msg)
-            print(error_msg)  # 同时在控制台输出
-    
-    def toggle_monitoring(self):
-        """切换监控状态"""
-        if not self.monitoring:
-            if not self.url_input.text():
-                QMessageBox.warning(self, "提示", "请先输入监控网址并保存设置")
-                return
-            
-            self.save_settings()
-            self.start_monitoring()
-        else:
-            self.stop_monitoring()
-    
-    def start_monitoring(self):
-        """开始监控"""
-        try:
-            self.monitoring = True
-            self.start_btn.setText("停止监控")
-            self.start_btn.setStyleSheet("background-color: #f44336; color: white; padding: 8px;")
-            self.statusBar().showMessage("正在初始化浏览器...")
-            
-            # 延迟初始化监控器，避免阻塞UI
-            try:
-                # 初始化监控器
-                if not self.monitor:
-                    self.statusBar().showMessage("正在初始化浏览器驱动，请稍候...")
-                    self.monitor = WebMonitor(self.config['target_url'], 
-                                             self.config.get('monitor_regions', []))
-                    self.statusBar().showMessage("浏览器初始化成功，开始监控...")
-                
-                # 立即执行一次检查（在后台线程中执行）
-                self.check_changes()
-                
-                # 启动定时器
-                interval_ms = self.config['check_interval'] * 1000
-                self.timer.start(interval_ms)
-                self.statusBar().showMessage("监控已启动")
-            
-            except Exception as e:
-                import traceback
-                error_msg = f"初始化浏览器失败: {str(e)}"
-                self.statusBar().showMessage("监控启动失败")
-                
-                # 恢复按钮状态
-                self.monitoring = False
-                self.start_btn.setText("开始监控")
-                self.start_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
-                
-                # 显示详细错误信息
-                detail_msg = f"{error_msg}\n\n可能的原因：\n1. Chrome浏览器未安装\n2. Chrome驱动下载失败\n3. 网络连接问题\n\n详细信息:\n{traceback.format_exc()}"
-                QMessageBox.critical(self, "启动监控失败", detail_msg)
-                
-                # 清理
-                if self.monitor:
-                    try:
-                        self.monitor.close()
-                    except:
-                        pass
-                    self.monitor = None
-                
-                print(detail_msg)
-        
-        except Exception as e:
-            import traceback
-            error_msg = f"启动监控时发生未知错误: {str(e)}\n\n{traceback.format_exc()}"
-            QMessageBox.critical(self, "严重错误", error_msg)
-            print(error_msg)
-            
-            # 恢复状态
-            self.monitoring = False
+            from playwright.sync_api import sync_playwright
+
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page(viewport={"width": 1400, "height": 900})
+                page.goto(url, wait_until="networkidle")
+                page.wait_for_timeout(3000)
+                page.screenshot(path=shot_file, full_page=True)
+                browser.close()
+            return shot_file
+        except Exception as exc:
+            self._log(f"截图失败: {exc}")
+            return None
+
+    def _on_region_selected(self, region):
+        if not region:
+            self._log("未保存区域")
+            return
+        self.conf["region"] = region
+        config.save_config(self.conf)
+        self._log("监控区域已保存")
+
+    def _toggle_monitor(self):
+        if self.worker and self.worker.thread and self.worker.thread.is_alive():
+            self.worker.stop()
             self.start_btn.setText("开始监控")
-            self.start_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
-    
-    def stop_monitoring(self):
-        """停止监控"""
-        self.monitoring = False
-        self.start_btn.setText("开始监控")
-        self.start_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
-        self.statusBar().showMessage("已停止监控")
-        
-        self.timer.stop()
-        if self.monitor:
-            self.monitor.close()
-            self.monitor = None
-    
-    def check_changes(self):
-        """检查变化"""
-        if not self.monitoring:
             return
-        
-        try:
-            if not self.monitor:
-                try:
-                    self.statusBar().showMessage("正在初始化浏览器...")
-                    self.monitor = WebMonitor(self.config['target_url'],
-                                             self.config.get('monitor_regions', []))
-                except Exception as e:
-                    error_msg = f"初始化浏览器失败: {str(e)}"
-                    self.statusBar().showMessage(error_msg)
-                    self.changes_text.append(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {error_msg}\n")
-                    # 停止监控
-                    self.stop_monitoring()
-                    QMessageBox.warning(self, "监控失败", f"{error_msg}\n\n监控已停止")
-                    return
-            
-            # 获取当前数据
-            try:
-                self.statusBar().showMessage("正在检查变化...")
-                new_data = self.monitor.extract_product_info()
-            except Exception as e:
-                error_msg = f"提取数据失败: {str(e)}"
-                self.statusBar().showMessage(error_msg)
-                self.changes_text.append(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {error_msg}\n")
-                return
-            
-            old_data = self.config.get('last_data', {})
-            
-            # 比较变化
-            changes = self.monitor.compare_data(old_data, new_data)
-            
-            if changes:
-                # 有变化，记录并截图
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                
-                try:
-                    # 保存截图
-                    screenshot_dir = self.config.get('screenshot_path', '')
-                    os.makedirs(screenshot_dir, exist_ok=True)
-                    
-                    screenshot_filename = f"change_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                    screenshot_path = os.path.join(screenshot_dir, screenshot_filename)
-                    
-                    # 获取全页截图
-                    self.monitor.get_page_screenshot(screenshot_path)
-                    
-                    # 记录变化
-                    change_log = {
-                        'timestamp': timestamp,
-                        'changes': changes,
-                        'screenshot': screenshot_filename,
-                        'all_data': new_data
-                    }
-                    
-                    # 保存到文件
-                    data_dir = self.config.get('data_path', '')
-                    os.makedirs(data_dir, exist_ok=True)
-                    log_file = os.path.join(data_dir, f"change_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
-                    with open(log_file, 'w', encoding='utf-8') as f:
-                        json.dump(change_log, f, ensure_ascii=False, indent=2)
-                    
-                    # 显示在UI
-                    log_text = f"\n[{timestamp}] 检测到变化:\n"
-                    for change in changes:
-                        log_text += f"  - {change['field']}: {change['old_value']} -> {change['new_value']}\n"
-                    log_text += f"  截图已保存: {screenshot_filename}\n"
-                    
-                    self.changes_text.append(log_text)
-                    self.statusBar().showMessage(f"检测到变化！时间: {timestamp}")
-                    
-                except Exception as e:
-                    error_msg = f"保存截图或日志失败: {str(e)}"
-                    self.statusBar().showMessage(error_msg)
-                    self.changes_text.append(f"\n[{timestamp}] 检测到变化，但保存失败: {error_msg}\n")
-                
-                # 更新配置中的最后数据
-                self.config['last_data'] = new_data
-                try:
-                    config.save_config(self.config)
-                except:
-                    pass
-            
-            else:
-                # 无变化，只更新时间
-                self.config['last_data'] = new_data
-                try:
-                    config.save_config(self.config)
-                except:
-                    pass
-                self.statusBar().showMessage(f"监控中... 上次检查: {datetime.now().strftime('%H:%M:%S')} (无变化)")
-        
-        except Exception as e:
-            import traceback
-            error_msg = f"检查变化时出错: {str(e)}"
-            self.statusBar().showMessage(error_msg)
-            error_detail = f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {error_msg}\n详细信息:\n{traceback.format_exc()}\n"
-            self.changes_text.append(error_detail)
-            print(error_detail)
-    
-    def closeEvent(self, event):
-        """窗口关闭事件"""
-        if self.monitoring:
-            self.stop_monitoring()
-        event.accept()
+        self._read_form_to_conf()
+        self.worker = monitor.MonitorWorker(self.conf, self._log, self._on_change, self._set_status)
+        self.worker.start()
+        self.start_btn.setText("停止监控")
+
+    def _on_change(self, log):
+        msg = f"时间: {log['time']}\n字段: {log['field']}\n原值: {log['old']}\n新值: {log['new']}\n截图: {log['screenshot']}\n版本: {log['version']}\n"
+        self._log(msg)
+
+    def _set_status(self, text):
+        def set_label():
+            self.status_label.setText(text)
+        QtCore.QMetaObject.invokeMethod(self.status_label, "setText", QtCore.Qt.QueuedConnection, QtCore.Q_ARG(str, text))
+        self._log(text)
+
+    def _log(self, text):
+        def append():
+            self.log_view.append(f"[{datetime.now().strftime('%H:%M:%S')}] {text}")
+        QtCore.QMetaObject.invokeMethod(self.log_view, "append", QtCore.Qt.QueuedConnection, QtCore.Q_ARG(str, f"[{datetime.now().strftime('%H:%M:%S')}] {text}"))
+
+    def _bind_hotkey(self):
+        key = self.conf.get("hotkey", "F9")
+        if self.hotkey_handle:
+            keyboard.remove_hotkey(self.hotkey_handle)
+        self.hotkey_handle = keyboard.add_hotkey(key, self._manual_snapshot)
+
+    def _manual_snapshot(self):
+        if not self.worker or not self.worker.last_fullshot:
+            self._log("暂无可保存的截图")
+            return
+        target_dir = self.conf.get("screenshot_path", ".")
+        os.makedirs(target_dir, exist_ok=True)
+        new_path = os.path.join(target_dir, f"manual_{monitor.timestamp()}.png")
+        shutil.copy(self.worker.last_fullshot, new_path)
+        self._log(f"手动截图已保存：{new_path}")
 

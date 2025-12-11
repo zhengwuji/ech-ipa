@@ -1,2 +1,2 @@
-# UI包初始化文件
+# UI package
 

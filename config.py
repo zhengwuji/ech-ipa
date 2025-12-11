@@ -1,61 +1,60 @@
-# 配置管理模块
 import os
 import yaml
-from pathlib import Path
+from typing import Any, Dict
 
-CONFIG_FILE = "config.yaml"
-DEFAULT_CONFIG = {
-    'save_path': str(Path.home() / 'Desktop' / 'jianche1'),
-    'screenshot_path': str(Path.home() / 'Desktop' / 'jianche1' / 'screenshots'),
-    'data_path': str(Path.home() / 'Desktop' / 'jianche1' / 'saved_data'),
-    'check_interval': 60,  # 秒，最小60秒
-    'target_url': '',
-    'monitor_regions': [],  # 监控区域 [{x, y, width, height, name}]
-    'last_data': {}  # 上次的数据
-}
 
-def load_config():
-    """加载配置"""
-    try:
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-                if config is None:
-                    config = {}
-                # 合并默认配置
-                for key, value in DEFAULT_CONFIG.items():
-                    if key not in config:
-                        config[key] = value
-                return config
-        return DEFAULT_CONFIG.copy()
-    except Exception as e:
-        print(f"加载配置失败: {e}，使用默认配置")
-        return DEFAULT_CONFIG.copy()
+CONFIG_PATH = "config.yaml"
 
-def save_config(config):
-    """保存配置"""
-    try:
-        # 确保目录存在
-        config_dir = os.path.dirname(CONFIG_FILE) if os.path.dirname(CONFIG_FILE) else '.'
-        if config_dir:
-            os.makedirs(config_dir, exist_ok=True)
-        
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-            yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
-    except Exception as e:
-        print(f"保存配置失败: {e}")
-        raise
 
-def ensure_directories(config):
-    """确保所有必要的目录存在"""
-    try:
-        if config.get('save_path'):
-            os.makedirs(config['save_path'], exist_ok=True)
-        if config.get('screenshot_path'):
-            os.makedirs(config['screenshot_path'], exist_ok=True)
-        if config.get('data_path'):
-            os.makedirs(config['data_path'], exist_ok=True)
-    except Exception as e:
-        print(f"创建目录失败: {e}")
-        raise
+def desktop_default_folder() -> str:
+    return os.path.join(os.path.expanduser("~"), "Desktop", "jianche1")
+
+
+def default_paths() -> Dict[str, str]:
+    base = desktop_default_folder()
+    return {
+        "save_path": base,
+        "screenshot_path": os.path.join(base, "screenshots"),
+        "data_path": os.path.join(base, "saved_data"),
+    }
+
+
+def default_config() -> Dict[str, Any]:
+    paths = default_paths()
+    return {
+        "target_url": "",
+        "check_interval": 60,
+        "save_path": paths["save_path"],
+        "screenshot_path": paths["screenshot_path"],
+        "data_path": paths["data_path"],
+        "hotkey": "F9",
+        "region": None,  # {"x_ratio": 0, "y_ratio": 0, "w_ratio": 0, "h_ratio": 0, "ref_width": 0, "ref_height": 0}
+        "last_text": "",
+    }
+
+
+def ensure_directories(conf: Dict[str, Any]) -> None:
+    os.makedirs(conf.get("save_path", ""), exist_ok=True)
+    os.makedirs(conf.get("screenshot_path", ""), exist_ok=True)
+    os.makedirs(conf.get("data_path", ""), exist_ok=True)
+
+
+def load_config() -> Dict[str, Any]:
+    if not os.path.exists(CONFIG_PATH):
+        conf = default_config()
+        ensure_directories(conf)
+        save_config(conf)
+        return conf
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        conf = yaml.safe_load(f) or {}
+    merged = default_config()
+    merged.update(conf)
+    ensure_directories(merged)
+    return merged
+
+
+def save_config(conf: Dict[str, Any]) -> None:
+    ensure_directories(conf)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        yaml.safe_dump(conf, f, allow_unicode=True, sort_keys=False)
 

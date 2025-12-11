@@ -1,44 +1,44 @@
-# 版本管理模块
-import os
 import json
+import os
+from typing import Tuple
+
 
 VERSION_FILE = "version.json"
+VERSION_MIN = (1, 0, 0)
+VERSION_MAX = (9, 9, 99)
 
-def get_version():
-    """获取当前版本号"""
-    if os.path.exists(VERSION_FILE):
-        with open(VERSION_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data.get('version', '1.0.00')
-    return '1.0.00'
 
-def increment_version():
-    """递增版本号 1.0.00 -> 1.0.01 -> ... -> 9.9.99 -> 1.0.00"""
-    current = get_version()
-    parts = current.split('.')
-    major = int(parts[0])
-    minor = int(parts[1])
-    patch = int(parts[2])
-    
+def _read_version() -> Tuple[int, int, int]:
+    if not os.path.exists(VERSION_FILE):
+        return VERSION_MIN
+    with open(VERSION_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    major, minor, patch = data.get("major", 1), data.get("minor", 0), data.get("patch", 0)
+    return int(major), int(minor), int(patch)
+
+
+def _write_version(v: Tuple[int, int, int]) -> str:
+    major, minor, patch = v
+    with open(VERSION_FILE, "w", encoding="utf-8") as f:
+        json.dump({"major": major, "minor": minor, "patch": patch}, f, ensure_ascii=False, indent=2)
+    return f"{major}.{minor}.{patch:02d}"
+
+
+def current_version() -> str:
+    v = _read_version()
+    return f"{v[0]}.{v[1]}.{v[2]:02d}"
+
+
+def bump_version() -> str:
+    major, minor, patch = _read_version()
     patch += 1
-    if patch > 99:
+    if patch > VERSION_MAX[2]:
         patch = 0
         minor += 1
-        if minor > 9:
-            minor = 0
-            major += 1
-            if major > 9:
-                major = 1
-    
-    new_version = f"{major}.{minor}.{patch:02d}"
-    
-    with open(VERSION_FILE, 'w', encoding='utf-8') as f:
-        json.dump({'version': new_version}, f, ensure_ascii=False, indent=2)
-    
-    return new_version
-
-def set_version(version):
-    """设置版本号"""
-    with open(VERSION_FILE, 'w', encoding='utf-8') as f:
-        json.dump({'version': version}, f, ensure_ascii=False, indent=2)
+    if minor > VERSION_MAX[1]:
+        minor = 0
+        major += 1
+    if major > VERSION_MAX[0]:
+        major, minor, patch = VERSION_MIN
+    return _write_version((major, minor, patch))
 
