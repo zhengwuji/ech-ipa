@@ -1,4 +1,218 @@
-name: Build iOS IPA (Enterprise Signed)
+name: Build iOS IPA
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - '.github/workflows/build-ipk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install briefcase toga
+      
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      
+      - name: Build ech-workers binary for iOS
+        run: |
+          echo "准备编译 ech-workers 为 iOS (darwin/arm64)..."
+          
+          # 复制 go.mod 到根目录
+          cp ech-wk-package/src/go.mod ./go.mod
+          cp ech-wk-package/src/go.sum ./go.sum 2>/dev/null || true
+          
+          # 下载依赖
+          go mod download
+          
+          # 编译为 iOS arm64 架构
+          echo "开始编译..."
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o ech-workers-ios -ldflags="-s -w" ech-workers.go
+          
+          # 创建资源目录并复制二进制文件
+          mkdir -p src/echipa/resources
+          cp ech-workers-ios src/echipa/resources/ech-workers
+          chmod +x src/echipa/resources/ech-workers
+          
+          echo "✅ ech-workers iOS 编译完成 (darwin/arm64)"
+          file src/echipa/resources/ech-workers || echo "file command not available"
+          ls -lh src/echipa/resources/ech-workers
+      
+      - name: Create iOS project
+        run: |
+          echo "创建 iOS 项目..."
+          briefcase create iOS
+      
+      - name: Build iOS app (unsigned)
+        run: |
+          echo "构建 iOS 应用 (未签名)..."
+          
+          # 查找 Xcode 项目
+          XCODE_PROJECT=$(find iOS -name "*.xcodeproj" | head -n 1)
+          
+          if [ -n "$XCODE_PROJECT" ]; then
+            echo "找到 Xcode 项目: $XCODE_PROJECT"
+            
+            # 构建未签名版本
+            xcodebuild -project "$XCODE_PROJECT" \
+              -scheme "ECH Workers" \
+              -configuration Release \
+              -sdk iphoneos \
+              -derivedDataPath ./build \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO
+          else
+            echo "使用 briefcase 构建"
+            briefcase build iOS
+          fi
+      
+      - name: Package IPA
+        run: |
+          echo "打包 IPA..."
+          
+          # 查找生成的 .app 文件
+          APP_PATH=$(find . -name "*.app" -type d | grep -v "\.xcodeproj" | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "错误: 未找到 .app 文件"
+            exit 1
+          fi
+          
+          echo "找到应用: $APP_PATH"
+          
+          # 创建 Payload 目录
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          
+          # 打包为 IPA (未签名)
+          IPA_NAME="ECHWorkers-unsigned.ipa"
+          zip -r "$IPA_NAME" Payload
+          
+          # 清理
+          rm -rf Payload
+          
+          echo "✅ IPA 打包完成: $IPA_NAME"
+          ls -lh "$IPA_NAME"
+      
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "生成更新日志..."
+          
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%an)" --no-merges | head -n  20)
+          else
+            CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%an)" --no-merges)
+          fi
+          
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- 首次发布 iOS 版本"
+          fi
+          
+          echo "$CHANGELOG" > CHANGELOG.txt
+          
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ECHWorkers-iOS
+          path: "*.ipa"
+      
+      - name: Generate release tag
+        id: tag
+        run: |
+          TAG="ios-unsigned-v1.2.0-$(date +'%Y%m%d-%H%M%S')"
+          echo "release_tag=$TAG" >> $GITHUB_OUTPUT
+          echo "生成标签: $TAG"
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: "iOS版本 ${{ steps.tag.outputs.release_tag }}"
+          body: |
+            # ECH Workers iOS 版本
+            
+            **未签名版本 - 需要自行签名安装**
+            
+            ## 安装方法
+            
+            ### 方法1: AltStore（推荐）
+            1. 在iOS设备上安装 [AltStore](https://altstore.io/)
+            2. 下载 `ECHWorkers-unsigned.ipa`
+            3. 在AltStore中打开IPA文件安装
+            
+            ### 方法2: Sideloadly
+            1. 在电脑上安装 [Sideloadly](https://sideloadly.io/)
+            2. 下载 `ECHWorkers-unsigned.ipa`
+            3. 使用Sideloadly签名并安装到iOS设备
+            
+            ### 方法3: 爱思助手（中国用户）
+            1. 下载爱思助手
+            2. 导入IPA并安装
+            
+            ## 功能特性
+            
+            - ✅ 服务器配置管理
+            - ✅ 启动/停止代理
+            - ✅ 分流设置（全局/跳过中国大陆）
+            - ✅ 实时日志查看
+            - ✅ 配置保存和加载
+            
+            ## 使用说明
+            
+            1. 打开应用
+            2. 填写服务器地址（例如：your-worker.workers.dev:443）
+            3. 选择代理模式（推荐：跳过中国大陆）
+            4. 点击"启动代理"
+            5. 在系统设置中配置SOCKS5代理：127.0.0.1:30000
+            
+            ## 更新日志
+            
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ---
+            
+            **构建时间**: ${{ steps.tag.outputs.release_tag }}
+            **支持设备**: iPhone/iPad (iOS 12.0+)
+            **架构**: arm64
+            **签名类型**: 未签名
+          files: |
+            *.ipa
+            CHANGELOG.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 on:
   push:
