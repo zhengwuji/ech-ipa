@@ -46,6 +46,9 @@ jobs:
           cp ech-wk-package/src/go.mod ./go.mod
           cp ech-wk-package/src/go.sum ./go.sum 2>/dev/null || true
           
+          # 整理依赖并生成go.sum
+          go mod tidy
+          
           # 下载依赖
           go mod download
           
@@ -61,6 +64,7 @@ jobs:
           echo "✅ ech-workers iOS 编译完成 (darwin/arm64)"
           file src/echipa/resources/ech-workers || echo "file command not available"
           ls -lh src/echipa/resources/ech-workers
+
       
       - name: Create iOS project
         run: |
