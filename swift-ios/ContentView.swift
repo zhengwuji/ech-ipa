@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(iOS 14.0, *)
 struct ContentView: View {
     // 配置状态
     @State private var serverAddress = "example.com:443"
@@ -35,7 +36,7 @@ struct ContentView: View {
                         }
                     }
                     .padding()
-                    .background(Color(.systemBackground))
+                    .background(Color(UIColor.systemBackground))
                     .cornerRadius(12)
                     .shadow(radius: 2)
                     
@@ -49,7 +50,7 @@ struct ContentView: View {
                         .padding(.top, 10)
                     }
                     .padding()
-                    .background(Color(.systemBackground))
+                    .background(Color(UIColor.systemBackground))
                     .cornerRadius(12)
                     .shadow(radius: 2)
                     
@@ -66,7 +67,7 @@ struct ContentView: View {
                         .pickerStyle(SegmentedPickerStyle())
                     }
                     .padding()
-                    .background(Color(.systemBackground))
+                    .background(Color(UIColor.systemBackground))
                     .cornerRadius(12)
                     .shadow(radius: 2)
                     
@@ -131,11 +132,11 @@ struct ContentView: View {
                                 .padding(8)
                         }
                         .frame(height: 200)
-                        .background(Color(.systemGray6))
+                        .background(Color(UIColor.systemGray6))
                         .cornerRadius(8)
                     }
                     .padding()
-                    .background(Color(.systemBackground))
+                    .background(Color(UIColor.systemBackground))
                     .cornerRadius(12)
                     .shadow(radius: 2)
                     
@@ -210,7 +211,7 @@ struct ContentView: View {
         
         saveConfig()
         
-        var config = ProxyConfig(
+        let config = ProxyConfig(
             server: serverAddress,
             listen: listenAddress,
             token: token.isEmpty ? nil : token,
@@ -237,6 +238,7 @@ struct ContentView: View {
     }
 }
 
+@available(iOS 14.0, *)
 struct ConfigField: View {
     let label: String
     @Binding var text: String
@@ -247,28 +249,15 @@ struct ConfigField: View {
             Text(label)
                 .font(.caption)
                 .foregroundColor(.secondary)
-            textField
-        }
-    }
-    
-    private var textField: some View {
-        TextField(placeholder, text: $text)
-            .textFieldStyle(RoundedBorderTextFieldStyle())
-            .disableAutocorrection(true)
-            .modifier(AutocapitalizationModifier())
-    }
-}
-
-struct AutocapitalizationModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 15.0, *) {
-            content.textInputAutocapitalization(.never)
-        } else {
-            content.autocapitalization(.none)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .disableAutocorrection(true)
+                .autocapitalization(.none)
         }
     }
 }
 
+@available(iOS 14.0, *)
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
