@@ -1,6 +1,19 @@
 # 主窗口UI
 import sys
 import os
+
+# 确保可以导入上级目录的模块
+if __name__ == '__main__' or (hasattr(sys, 'frozen') and sys.frozen):
+    # 打包后或直接运行
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+else:
+    # 开发模式
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QLineEdit, QSpinBox,
                              QTextEdit, QFileDialog, QMessageBox, QGroupBox,
@@ -8,8 +21,22 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QDateTimeEdit, QScrollArea, QFrame)
 from PyQt5.QtCore import Qt, QTimer, QDateTime, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImage, QFont
-import config
-from web_monitor import WebMonitor
+
+try:
+    import config
+    from web_monitor import WebMonitor
+except ImportError:
+    # 如果直接导入失败，尝试从父目录导入
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("config", os.path.join(parent_dir, "config.py"))
+    config = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(config)
+    
+    spec = importlib.util.spec_from_file_location("web_monitor", os.path.join(parent_dir, "web_monitor.py"))
+    web_monitor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(web_monitor)
+    WebMonitor = web_monitor.WebMonitor
+
 from datetime import datetime
 import json
 import shutil

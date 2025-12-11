@@ -1,5 +1,17 @@
 # 区域选择器窗口
 import sys
+import os
+
+# 确保可以导入上级目录的模块
+if __name__ == '__main__' or (hasattr(sys, 'frozen') and sys.frozen):
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+else:
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QLineEdit, QSpinBox, QGroupBox, QMessageBox)
 from PyQt5.QtCore import Qt
@@ -10,7 +22,17 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
-from browser_detector import detect_browsers, get_browser_name
+
+try:
+    from browser_detector import detect_browsers, get_browser_name
+except ImportError:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("browser_detector", os.path.join(parent_dir, "browser_detector.py"))
+    browser_detector = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(browser_detector)
+    detect_browsers = browser_detector.detect_browsers
+    get_browser_name = browser_detector.get_browser_name
+
 from PIL import Image
 import io
 import time
