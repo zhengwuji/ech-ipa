@@ -50,6 +50,8 @@
     </array>
     <key>NSLocalNetworkUsageDescription</key>
     <string>ECH Workers需要访问本地网络以提供代理服务</string>
+    <key>MinimumOSVersion</key>
+    <string>13.0</string>
     <key>UIBackgroundModes</key>
     <array>
         <string>fetch</string>
