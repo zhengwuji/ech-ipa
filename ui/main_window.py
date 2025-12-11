@@ -17,16 +17,26 @@ import shutil
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.config = config.load_config()
-        config.ensure_directories(self.config)
-        
-        self.monitor = None
-        self.monitoring = False
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.check_changes)
-        
-        self.init_ui()
-        self.load_config_to_ui()
+        try:
+            self.config = config.load_config()
+            try:
+                config.ensure_directories(self.config)
+            except Exception as e:
+                print(f"创建目录时出错: {e}")
+            
+            self.monitor = None
+            self.monitoring = False
+            self.timer = QTimer()
+            self.timer.timeout.connect(self.check_changes)
+            
+            self.init_ui()
+            self.load_config_to_ui()
+        except Exception as e:
+            import traceback
+            error_msg = f"初始化程序时出错:\n{str(e)}\n\n详细信息:\n{traceback.format_exc()}"
+            QMessageBox.critical(None, "严重错误", error_msg)
+            print(error_msg)
+            raise
     
     def init_ui(self):
         """初始化UI"""
@@ -141,23 +151,56 @@ class MainWindow(QMainWindow):
     
     def load_config_to_ui(self):
         """加载配置到UI"""
-        self.url_input.setText(self.config.get('target_url', ''))
-        self.save_path_input.setText(self.config.get('save_path', ''))
-        self.screenshot_path_input.setText(self.config.get('screenshot_path', ''))
-        self.interval_spin.setValue(self.config.get('check_interval', 60))
-        self.load_regions_to_table()
+        try:
+            self.url_input.setText(self.config.get('target_url', ''))
+            save_path = self.config.get('save_path', '')
+            screenshot_path = self.config.get('screenshot_path', '')
+            
+            # 确保路径不为空，如果为空则使用默认值
+            if not save_path:
+                from pathlib import Path
+                save_path = str(Path.home() / 'Desktop' / 'jianche1')
+            
+            if not screenshot_path:
+                from pathlib import Path
+                screenshot_path = str(Path.home() / 'Desktop' / 'jianche1' / 'screenshots')
+            
+            self.save_path_input.setText(save_path)
+            self.screenshot_path_input.setText(screenshot_path)
+            self.interval_spin.setValue(self.config.get('check_interval', 60))
+            self.load_regions_to_table()
+        except Exception as e:
+            print(f"加载配置到UI时出错: {e}")
+            import traceback
+            traceback.print_exc()
     
     def browse_save_path(self):
         """浏览保存路径"""
-        path = QFileDialog.getExistingDirectory(self, "选择保存路径", self.save_path_input.text())
-        if path:
-            self.save_path_input.setText(path)
+        try:
+            current_path = self.save_path_input.text()
+            if not current_path:
+                from pathlib import Path
+                current_path = str(Path.home() / 'Desktop')
+            
+            path = QFileDialog.getExistingDirectory(self, "选择保存路径", current_path)
+            if path:
+                self.save_path_input.setText(path)
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"选择路径时出错: {str(e)}")
     
     def browse_screenshot_path(self):
         """浏览截图保存路径"""
-        path = QFileDialog.getExistingDirectory(self, "选择截图保存路径", self.screenshot_path_input.text())
-        if path:
-            self.screenshot_path_input.setText(path)
+        try:
+            current_path = self.screenshot_path_input.text()
+            if not current_path:
+                from pathlib import Path
+                current_path = str(Path.home() / 'Desktop')
+            
+            path = QFileDialog.getExistingDirectory(self, "选择截图保存路径", current_path)
+            if path:
+                self.screenshot_path_input.setText(path)
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"选择路径时出错: {str(e)}")
     
     def add_monitor_region(self):
         """添加监控区域（通过截图标记）"""
@@ -197,15 +240,40 @@ class MainWindow(QMainWindow):
     
     def save_settings(self):
         """保存设置"""
-        self.config['target_url'] = self.url_input.text()
-        self.config['save_path'] = self.save_path_input.text()
-        self.config['screenshot_path'] = self.screenshot_path_input.text()
-        self.config['check_interval'] = self.interval_spin.value()
+        try:
+            # 验证路径
+            save_path = self.save_path_input.text().strip()
+            screenshot_path = self.screenshot_path_input.text().strip()
+            
+            if not save_path:
+                QMessageBox.warning(self, "错误", "请设置保存路径")
+                return
+            
+            if not screenshot_path:
+                QMessageBox.warning(self, "错误", "请设置截图保存路径")
+                return
+            
+            self.config['target_url'] = self.url_input.text().strip()
+            self.config['save_path'] = save_path
+            self.config['screenshot_path'] = screenshot_path
+            self.config['check_interval'] = self.interval_spin.value()
+            
+            # 保存配置
+            config.save_config(self.config)
+            
+            # 确保目录存在
+            try:
+                config.ensure_directories(self.config)
+            except Exception as e:
+                QMessageBox.warning(self, "警告", f"创建目录时出错: {str(e)}\n但设置已保存")
+            
+            QMessageBox.information(self, "成功", "设置已保存")
         
-        config.save_config(self.config)
-        config.ensure_directories(self.config)
-        
-        QMessageBox.information(self, "成功", "设置已保存")
+        except Exception as e:
+            import traceback
+            error_msg = f"保存设置时出错:\n{str(e)}\n\n详细信息:\n{traceback.format_exc()}"
+            QMessageBox.critical(self, "错误", error_msg)
+            print(error_msg)  # 同时在控制台输出
     
     def toggle_monitoring(self):
         """切换监控状态"""
