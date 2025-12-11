@@ -81,5 +81,15 @@
     <string>1500</string>
     <key>DTXcodeBuild</key>
     <string>15A240d</string>
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>iPhoneOS</string>
+    </array>
+    <key>BuildMachineOSBuild</key>
+    <string>23A344</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>DTSDKBuild</key>
+    <string>21A326</string>
 </dict>
 </plist>
