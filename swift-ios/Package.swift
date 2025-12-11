@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "ECHWorkers",
     platforms: [
-        .iOS(.v12)
+        .iOS(.v14)
     ],
     products: [
         .executable(name: "ECHWorkers", targets: ["ECHWorkers"])
@@ -17,10 +17,10 @@ let package = Package(
             sources: [
                 "ECHWorkersApp.swift",
                 "ContentView.swift",
-                "ProxyManager.swift"
+                "ECHNetworkManager.swift"
             ],
             resources: [
-                .copy("Resources")
+                .copy("Assets.xcassets")
             ]
         )
     ]

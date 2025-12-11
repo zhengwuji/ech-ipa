@@ -35,187 +35,15 @@ jobs:
         with:
           xcode-version: latest-stable
       
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          cache: false
-      
-      - name: Install gomobile
-        run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
-          gomobile init
-          echo "✅ gomobile 安装完成"
-      
-      - name: Build ECHClient Framework with gomobile
-        run: |
-          cd swift-ios/echclient
-          
-          # 下载依赖
-          go mod tidy
-          go mod download
-          
-          # 确保 golang.org/x/mobile 所有子包都在模块缓存中
-          go get golang.org/x/mobile@latest
-          go get golang.org/x/mobile/bind@latest
-          go get golang.org/x/mobile/bind/objc@latest
-          go get golang.org/x/mobile/bind/seq@latest
-          
-          # 使用 gomobile 构建 iOS framework - 只构建 arm64 真机架构（跳过模拟器）
-          echo "正在构建 ECHClient.xcframework (arm64 only)..."
-          # 使用 ios/arm64 确保只生成真机架构，不生成模拟器
-          gomobile bind -target=ios/arm64 -iosversion=14.0 -o ../ECHClient.xcframework .
-          
-          echo "✅ ECHClient.xcframework 构建完成"
-          ls -la ../ECHClient.xcframework/
-          
-          # ========== 转换静态 framework 为动态库 ==========
-          echo "🔧 检查并转换 framework 类型..."
-          
-          if [ -d "../ECHClient.xcframework/ios-arm64/ECHClient.framework" ]; then
-            FRAMEWORK_DIR="../ECHClient.xcframework/ios-arm64/ECHClient.framework"
-            cd "$FRAMEWORK_DIR"
-            
-            echo "检查原始库类型:"
-            file ECHClient
-            
-            # 检查是否是静态库（ar archive）
-            if file ECHClient | grep -q "ar archive"; then
-              echo "⚠️ 检测到静态库（ar archive），开始转换为动态库..."
-              
-              # 备份原始静态库
-              cp ECHClient ECHClient_static
-              
-              # 创建临时目录用于提取
-              mkdir -p temp_objects
-              cd temp_objects
-              
-              # 提取所有 .o 文件
-              echo "提取对象文件..."
-              ar -x ../ECHClient_static
-              
-              # 列出提取的文件（限制输出）
-              OBJ_COUNT=$(ls -1 *.o 2>/dev/null | wc -l | tr -d ' ')
-              echo "提取的对象文件数量: $OBJ_COUNT"
-              ls -lh *.o 2>/dev/null | head -5 || true
-              
-              # 使用 clang 创建动态库
-              echo "正在创建动态库..."
-              if clang -dynamiclib -o ../ECHClient \
-                -arch arm64 \
-                -install_name @rpath/ECHClient.framework/ECHClient \
-                -Xlinker -rpath -Xlinker @executable_path/Frameworks \
-                -Xlinker -rpath -Xlinker @loader_path/Frameworks \
-                -Xlinker -final_output -Xlinker ECHClient \
-                -compatibility_version 1.0 \
-                -current_version 1.0 \
-                -dead_strip \
-                *.o 2>&1 | tee ../clang_output.log; then
-                echo "✅ clang 链接成功"
-              else
-                echo "❌ clang 链接失败，查看日志:"
-                cat ../clang_output.log || true
-                cd ../..
-                exit 1
-              fi
-              
-              # 返回 framework 目录
-              cd ..
-              
-              # 清理临时文件
-              echo "清理临时文件..."
-              rm -rf temp_objects ECHClient_static clang_output.log
-              
-              # 验证生成的动态库
-              echo "验证生成的动态库:"
-              file ECHClient
-              lipo -info ECHClient
-              echo "Mach-O header:"
-              otool -hv ECHClient 2>/dev/null | head -10 || true
-              
-              # 确认是动态库类型
-              if file ECHClient | grep -qE "(dynamically linked shared library|Mach-O.*dynamic)"; then
-                echo "✅ 成功转换为动态库"
-              else
-                echo "⚠️ 警告：生成的文件可能不是动态库"
-                file ECHClient
-                echo "尝试继续，但可能会失败..."
-              fi
-              
-              # 设置正确的权限
-              chmod 755 ECHClient
-              
-              # 返回 echclient 目录
-              cd ../../..
-            elif file ECHClient | grep -qE "(dynamically linked|Mach-O.*executable|Mach-O.*bundle)"; then
-              echo "✅ 已经是动态库或可执行文件，无需转换"
-              cd ../../..
-            else
-              echo "⚠️ 未知的文件类型:"
-              file ECHClient
-              cd ../../..
-            fi
-          fi
-          echo "========== Framework 类型转换完成 =========="
-          
-          # 验证framework架构并移除模拟器架构（如果存在）
-          if [ -d "../ECHClient.xcframework/ios-arm64/ECHClient.framework" ]; then
-            echo "检查 arm64 真机 framework..."
-            FRAMEWORK_BINARY="../ECHClient.xcframework/ios-arm64/ECHClient.framework/ECHClient"
-            if [ -f "$FRAMEWORK_BINARY" ]; then
-              echo "原始架构信息:"
-              lipo -info "$FRAMEWORK_BINARY"
-              file "$FRAMEWORK_BINARY"
-              echo "详细 Mach-O 信息:"
-              otool -hv "$FRAMEWORK_BINARY" 2>/dev/null || true
-              
-              # 检查是否是 fat binary（包含多个架构）
-              ARCH_INFO=$(lipo -info "$FRAMEWORK_BINARY" 2>&1)
-              if echo "$ARCH_INFO" | grep -q "Architectures in the fat file"; then
-                echo "检测到 fat binary,提取纯 arm64 架构..."
-                if echo "$ARCH_INFO" | grep -q "arm64"; then
-                  lipo "$FRAMEWORK_BINARY" -thin arm64 -output "${FRAMEWORK_BINARY}.tmp"
-                  if [ $? -eq 0 ] && [ -f "${FRAMEWORK_BINARY}.tmp" ]; then
-                    mv "${FRAMEWORK_BINARY}.tmp" "$FRAMEWORK_BINARY"
-                    echo "✅ 提取后的架构信息:"
-                    lipo -info "$FRAMEWORK_BINARY"
-                  else
-                    echo "⚠️  lipo 提取失败,保持原文件"
-                    rm -f "${FRAMEWORK_BINARY}.tmp"
-                  fi
-                else
-                  echo "⚠️  警告: fat binary 中不包含 arm64 架构"
-                fi
-              else
-                echo "✅ 已经是单一架构,无需处理"
-              fi
-              
-              # 最终验证
-              echo "最终架构信息:"
-              lipo -info "$FRAMEWORK_BINARY"
-              file "$FRAMEWORK_BINARY"
-            fi
-          fi
-          
-          # 移除模拟器架构的framework（爱思助手不需要）
-          if [ -d "../ECHClient.xcframework/ios-arm64_x86_64-simulator" ]; then
-            echo "移除模拟器架构..."
-            rm -rf "../ECHClient.xcframework/ios-arm64_x86_64-simulator"
-          fi
-          
-          echo "最终 xcframework 结构:"
-          ls -la ../ECHClient.xcframework/
-      
       - name: Setup project structure
         run: |
           cd swift-ios
           
-          echo "准备项目文件..."
+          echo "准备纯 Swift 项目（无 Go/gomobile 依赖）..."
           chmod +x create_xcode_project.sh
           ./create_xcode_project.sh
           
-          # 生成各种尺寸的图标 (使用 sips 命令)
+          # 生成各种尺寸的图标
           if [ -f Assets.xcassets/AppIcon.appiconset/Icon-1024.png ]; then
             echo "生成应用图标..."
             cd Assets.xcassets/AppIcon.appiconset
@@ -228,13 +56,11 @@ jobs:
             echo "✅ 应用图标生成完成"
           fi
           
-          echo "✅ 项目结构创建完成"
+          echo "✅ 纯 Swift 项目结构创建完成"
+          echo "项目内容:"
           ls -la
-      
-      - name: Prepare for unsigned build
-        run: |
-          echo "准备未签名构建（TrollStore 兼容）..."
-          # 不创建签名证书，直接构建未签名版本
+          echo "Swift 源文件:"
+          ls -la *.swift
       
       - name: Build with xcodebuild
         run: |
@@ -245,9 +71,9 @@ jobs:
           echo "ECHWorkers 目录:"
           ls -la ECHWorkers/ || true
           
-          echo "使用 xcodebuild 构建（未签名版本，TrollStore 兼容）..."
+          echo "使用 xcodebuild 构建纯 Swift 应用（无 Framework 依赖）..."
           
-          # 完全不签名构建（TrollStore 需要）
+          # 构建纯 Swift 应用，无任何 Framework
           xcodebuild \
             -project ECHWorkers.xcodeproj \
             -scheme ECHWorkers \
@@ -271,14 +97,14 @@ jobs:
           APP_PATH=$(find ./build -name "*.app" -type d | head -n 1)
           echo "找到应用: $APP_PATH"
           
-          # 验证可执行文件是否有效
+          # 验证可执行文件
           if [ -n "$APP_PATH" ]; then
             if [ ! -f "$APP_PATH/ECHWorkers" ]; then
               echo "❌ 错误: 可执行文件不存在"
               exit 1
             fi
             
-            # 检查文件大小（不能为空）
+            # 检查文件大小
             FILE_SIZE=$(stat -f%z "$APP_PATH/ECHWorkers" 2>/dev/null || stat -c%s "$APP_PATH/ECHWorkers" 2>/dev/null || echo "0")
             if [ "$FILE_SIZE" -eq 0 ]; then
               echo "❌ 错误: 可执行文件为空"
@@ -286,11 +112,10 @@ jobs:
             fi
             echo "可执行文件大小: $FILE_SIZE 字节"
             
-            # 检查文件类型
+            # 检查文件类型和架构
             echo "文件类型:"
             file "$APP_PATH/ECHWorkers"
             
-            # 检查架构
             echo "架构信息:"
             lipo -info "$APP_PATH/ECHWorkers" || (echo "❌ lipo 检查失败" && exit 1)
             
@@ -302,174 +127,33 @@ jobs:
             fi
             echo "✅ 可执行文件架构验证通过: $APP_ARCH"
             
-            # 检查当前签名（应该没有签名）
-            echo "当前签名状态:"
-            codesign -dv "$APP_PATH/ECHWorkers" 2>&1 || echo "未签名（符合预期）"
-            
-            # 确保没有签名和签名目录（TrollStore 需要完全未签名的应用）
-            echo "清理任何残留的签名..."
+            # 清理签名
+            echo "清理残留签名..."
             codesign --remove-signature "$APP_PATH/ECHWorkers" 2>/dev/null || true
             codesign --remove-signature "$APP_PATH" 2>/dev/null || true
             rm -rf "$APP_PATH/_CodeSignature" 2>/dev/null || true
             rm -rf "$APP_PATH/embedded.mobileprovision" 2>/dev/null || true
             
-            # 再次验证文件类型（确保移除签名后仍然有效）
-            echo "移除签名后的文件类型:"
-            file "$APP_PATH/ECHWorkers"
-            
-            # 验证 Mach-O 格式
-            echo "验证 Mach-O 格式..."
-            if ! file "$APP_PATH/ECHWorkers" | grep -q "Mach-O"; then
-              echo "❌ 错误: 可执行文件不是有效的 Mach-O 格式"
-              exit 1
-            fi
-            
             # 确保可执行权限
             chmod +x "$APP_PATH/ECHWorkers"
             
-            # 使用 otool 验证可执行文件
+            # 使用 otool 验证
             echo "使用 otool 验证:"
             otool -h "$APP_PATH/ECHWorkers" || (echo "❌ otool 验证失败" && exit 1)
             
-            echo "✅ 可执行文件验证通过"
+            echo "✅ 纯 Swift 可执行文件验证通过"
           fi
           
-          # 复制 ECHClient.xcframework 到 .app/Frameworks
-          if [ -d ECHClient.xcframework ] && [ -n "$APP_PATH" ]; then
-            echo "复制 ECHClient.xcframework..."
-            mkdir -p "$APP_PATH/Frameworks"
-            # 找到 ios-arm64 的 framework
-            if [ -d "ECHClient.xcframework/ios-arm64/ECHClient.framework" ]; then
-              # 先清理目标目录
-              rm -rf "$APP_PATH/Frameworks/ECHClient.framework" 2>/dev/null || true
-              
-              # 复制 framework - 只复制二进制文件，不复制整个目录
-              mkdir -p "$APP_PATH/Frameworks/ECHClient.framework"
-              
-              # 只复制 Mach-O 二进制文件（这是唯一需要的文件）
-              cp "ECHClient.xcframework/ios-arm64/ECHClient.framework/ECHClient" "$APP_PATH/Frameworks/ECHClient.framework/"
-              
-              echo "设置 framework 权限和结构..."
-              
-              # 确保二进制文件有正确的权限
-              chmod 755 "$APP_PATH/Frameworks/ECHClient.framework/ECHClient"
-              chmod 755 "$APP_PATH/Frameworks/ECHClient.framework"
-              
-              # 创建最小的 Info.plist（iOS 需要它来识别 framework）
-              printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n<key>CFBundleExecutable</key>\n<string>ECHClient</string>\n<key>CFBundleIdentifier</key>\n<string>com.echworkers.echclient</string>\n<key>CFBundleInfoDictionaryVersion</key>\n<string>6.0</string>\n<key>CFBundlePackageType</key>\n<string>FMWK</string>\n<key>CFBundleVersion</key>\n<string>1</string>\n<key>MinimumOSVersion</key>\n<string>14.0</string>\n</dict>\n</plist>\n' > "$APP_PATH/Frameworks/ECHClient.framework/Info.plist"
-              
-              # 验证清理后 Framework 只包含必要文件
-              echo "清理后的 Framework 结构:"
-              ls -la "$APP_PATH/Frameworks/ECHClient.framework/"
-              
-              # 验证 framework 可执行文件
-              if [ -f "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" ]; then
-                echo "验证 framework 可执行文件..."
-                file "$APP_PATH/Frameworks/ECHClient.framework/ECHClient"
-                echo "详细架构信息:"
-                otool -hv "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" 2>/dev/null || true
-                
-                # 验证是有效的 Mach-O 文件
-                if ! file "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" | grep -q "Mach-O"; then
-                  echo "❌ Framework 可执行文件不是有效的 Mach-O 格式"
-                  exit 1
-                fi
-                
-                # 检查架构
-                echo "Framework 架构信息:"
-                lipo -info "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" || (echo "❌ Framework 架构检查失败" && exit 1)
-                
-                # 验证架构是 arm64
-                FRAMEWORK_ARCH=$(lipo -info "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" 2>&1)
-                if ! echo "$FRAMEWORK_ARCH" | grep -q "arm64"; then
-                  echo "⚠️  警告: Framework 架构不是 arm64: $FRAMEWORK_ARCH"
-                fi
-                
-                otool -h "$APP_PATH/Frameworks/ECHClient.framework/ECHClient" || (echo "❌ Framework 验证失败" && exit 1)
-                
-                # 确保 framework 可执行文件有正确的权限
-                chmod 755 "$APP_PATH/Frameworks/ECHClient.framework/ECHClient"
-                
-                # 验证 framework 目录结构
-                if [ ! -f "$APP_PATH/Frameworks/ECHClient.framework/Info.plist" ]; then
-                  echo "⚠️  警告: Framework Info.plist 不存在，创建最小版本..."
-                  printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n    <key>CFBundleExecutable</key>\n    <string>ECHClient</string>\n    <key>CFBundleIdentifier</key>\n    <string>com.echworkers.echclient</string>\n    <key>CFBundleInfoDictionaryVersion</key>\n    <string>6.0</string>\n    <key>CFBundlePackageType</key>\n    <string>FMWK</string>\n    <key>CFBundleShortVersionString</key>\n    <string>1.0</string>\n    <key>CFBundleVersion</key>\n    <string>1</string>\n</dict>\n</plist>\n' > "$APP_PATH/Frameworks/ECHClient.framework/Info.plist"
-                fi
-              else
-                echo "❌ Framework 可执行文件不存在"
-                exit 1
-              fi
-              
-              echo "✅ ECHClient.framework 已复制并验证"
-              
-              # 最终验证 framework 目录结构
-              echo "验证 framework 最终结构..."
-              if [ ! -d "$APP_PATH/Frameworks/ECHClient.framework" ]; then
-                echo "❌ Framework 目录不存在"
-                exit 1
-              fi
-              
-              # 列出 framework 中的所有文件
-              echo "Framework 文件列表:"
-              find "$APP_PATH/Frameworks/ECHClient.framework" -type f | sort
-              
-              # 确保 framework 目录有正确的权限
-              chmod 755 "$APP_PATH/Frameworks/ECHClient.framework"
-              
-              # 验证 framework 中只有必要的文件
-              FRAMEWORK_FILES=$(find "$APP_PATH/Frameworks/ECHClient.framework" -type f | wc -l)
-              echo "Framework 文件数量: $FRAMEWORK_FILES"
-              
-              # 确保没有意外的文件类型
-              find "$APP_PATH/Frameworks/ECHClient.framework" -type f | while read f; do
-                FILE_TYPE=$(file "$f" | cut -d: -f2)
-                if echo "$FILE_TYPE" | grep -q "Mach-O\|XML\|ASCII\|text\|empty"; then
-                  echo "✅ 有效文件: $f ($FILE_TYPE)"
-                else
-                  echo "⚠️  警告: 意外的文件类型: $f ($FILE_TYPE)"
-                fi
-              done
-            fi
-          fi
-          
-          # 查找并验证 app bundle 中的所有二进制文件
-          echo "查找 app bundle 中的所有二进制文件..."
-          find "$APP_PATH" -type f -perm +111 -exec file {} \; | grep -i "mach-o" || true
-          
-          # 确保所有二进制文件都是有效的 Mach-O 格式
-          echo "验证所有二进制文件..."
-          find "$APP_PATH" -type f -perm +111 | while read binary; do
-            if file "$binary" | grep -q "Mach-O"; then
-              echo "验证: $binary"
-              otool -h "$binary" > /dev/null 2>&1 || echo "⚠️  警告: $binary 验证失败"
-            fi
-          done
-          
-          # 复制.app到当前目录
+          # 复制 .app
           if [ -n "$APP_PATH" ]; then
-            # 使用 rsync 或 cp 确保完整复制
             cp -R "$APP_PATH" ./ECHWorkers.app
             
-            # 验证复制后的可执行文件
+            # 验证复制后的文件
             if [ -f "./ECHWorkers.app/ECHWorkers" ]; then
               echo "验证复制后的可执行文件..."
               file "./ECHWorkers.app/ECHWorkers"
               otool -h "./ECHWorkers.app/ECHWorkers" || (echo "❌ 复制后验证失败" && exit 1)
-              
-              # 确保可执行权限
               chmod +x "./ECHWorkers.app/ECHWorkers"
-              
-              # 验证所有 framework 二进制文件
-              if [ -d "./ECHWorkers.app/Frameworks" ]; then
-                find "./ECHWorkers.app/Frameworks" -type f -perm +111 | while read binary; do
-                  if file "$binary" | grep -q "Mach-O"; then
-                    echo "验证 framework 二进制: $binary"
-                    otool -h "$binary" > /dev/null 2>&1 || echo "⚠️  警告: $binary 验证失败"
-                    chmod +x "$binary"
-                  fi
-                done
-              fi
-              
               echo "✅ 复制后验证通过"
             fi
           fi
@@ -484,25 +168,19 @@ jobs:
         run: |
           cd swift-ios
           
-          # 最终验证可执行文件和 app bundle 结构
+          # 最终验证
           if [ -f "./ECHWorkers.app/ECHWorkers" ]; then
             echo "最终验证可执行文件..."
             file "./ECHWorkers.app/ECHWorkers"
             otool -h "./ECHWorkers.app/ECHWorkers" || (echo "❌ 最终验证失败" && exit 1)
             
-            # 验证 Info.plist 存在且正确
+            # 验证 Info.plist
             if [ ! -f "./ECHWorkers.app/Info.plist" ]; then
               echo "❌ 错误: Info.plist 不存在"
               exit 1
             fi
             
-            # 验证可执行文件名与 Info.plist 中的一致
-            EXECUTABLE_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "./ECHWorkers.app/Info.plist" 2>/dev/null || echo "")
-            if [ "$EXECUTABLE_NAME" != "ECHWorkers" ]; then
-              echo "⚠️  警告: Info.plist 中的可执行文件名 ($EXECUTABLE_NAME) 与文件名不匹配"
-            fi
-            
-            echo "✅ 可执行文件和 app bundle 验证通过"
+            echo "✅ 纯 Swift 应用验证通过"
           else
             echo "❌ 错误: 可执行文件不存在"
             exit 1
@@ -510,186 +188,46 @@ jobs:
           
           # 创建 Payload 目录
           mkdir -p Payload
-          
-          # 使用 cp -R 确保完整复制
           cp -R ECHWorkers.app Payload/
           
-          # 确保 .app bundle 本身是一个目录（不是文件或符号链接）
-          if [ ! -d "Payload/ECHWorkers.app" ]; then
-            echo "❌ 错误: .app bundle 不是目录"
-            exit 1
-          fi
-          
-          # 确保 .app bundle 有正确的权限
+          # 确保权限正确
           chmod 755 "Payload/ECHWorkers.app"
+          find "Payload/ECHWorkers.app" -type d -exec chmod 755 {} \; 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -type f -perm +111 -exec chmod 755 {} \; 2>/dev/null || true
+          find "Payload/ECHWorkers.app" -type f ! -perm +111 -exec chmod 644 {} \; 2>/dev/null || true
           
-          # 彻底清理可能导致 ldid 混淆的所有文件
-          echo "彻底清理 .app bundle..."
+          # 彻底清理
+          echo "清理 .app bundle..."
           find "Payload/ECHWorkers.app" -name ".DS_Store" -delete 2>/dev/null || true
           find "Payload/ECHWorkers.app" -name "._*" -delete 2>/dev/null || true
           find "Payload/ECHWorkers.app" -name ".git*" -delete 2>/dev/null || true
           find "Payload/ECHWorkers.app" -type l -delete 2>/dev/null || true
-          
-          # 移除所有签名相关文件
           find "Payload/ECHWorkers.app" -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true
           find "Payload/ECHWorkers.app" -name "embedded.mobileprovision" -delete 2>/dev/null || true
-          find "Payload/ECHWorkers.app" -name "*.entitlements" -delete 2>/dev/null || true
           
-          # 确保所有目录都有正确的权限
-          find "Payload/ECHWorkers.app" -type d -exec chmod 755 {} \; 2>/dev/null || true
-          
-          # 确保所有二进制文件都有正确的权限
-          find "Payload/ECHWorkers.app" -type f -perm +111 -exec chmod 755 {} \; 2>/dev/null || true
-          
-          # 确保所有普通文件都有正确的权限
-          find "Payload/ECHWorkers.app" -type f ! -perm +111 -exec chmod 644 {} \; 2>/dev/null || true
-          
-          # 最终验证所有二进制文件的架构
-          echo "最终验证所有二进制文件的架构..."
-          find "Payload/ECHWorkers.app" -type f -perm +111 | while read binary; do
-            if file "$binary" | grep -q "Mach-O"; then
-              echo "验证架构: $binary"
-              ARCH_INFO=$(lipo -info "$binary" 2>&1)
-              if [ $? -eq 0 ]; then
-                echo "  ✅ $ARCH_INFO"
-                if ! echo "$ARCH_INFO" | grep -q "arm64"; then
-                  echo "  ⚠️  警告: 不是 arm64 架构"
-                fi
-              else
-                echo "  ❌ 架构检查失败: $ARCH_INFO"
-              fi
-            fi
-          done
-          
-          # 清理可能导致问题的文件和目录
-          echo "清理可能导致问题的文件..."
-          find "Payload/ECHWorkers.app" -name ".DS_Store" -delete 2>/dev/null || true
-          find "Payload/ECHWorkers.app" -name "*.swiftmodule" -delete 2>/dev/null || true
-          find "Payload/ECHWorkers.app" -name "*.swiftdoc" -delete 2>/dev/null || true
-          find "Payload/ECHWorkers.app" -name "*.swiftsourceinfo" -delete 2>/dev/null || true
-          find "Payload/ECHWorkers.app" -type l -delete 2>/dev/null || true
-          
-          # 移除所有签名相关文件
-          find "Payload/ECHWorkers.app" -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true
-          find "Payload/ECHWorkers.app" -name "embedded.mobileprovision" -delete 2>/dev/null || true
-          find "Payload/ECHWorkers.app" -name "*.entitlements" -delete 2>/dev/null || true
-          
-          # 再次验证 Payload 中的可执行文件
+          # 最终验证架构
+          echo "最终验证架构..."
           if [ -f "Payload/ECHWorkers.app/ECHWorkers" ]; then
-            echo "验证 Payload 中的可执行文件..."
-            file "Payload/ECHWorkers.app/ECHWorkers"
-            otool -h "Payload/ECHWorkers.app/ECHWorkers" || (echo "❌ Payload 验证失败" && exit 1)
+            ARCH_INFO=$(lipo -info "Payload/ECHWorkers.app/ECHWorkers" 2>&1)
+            echo "✅ 架构: $ARCH_INFO"
             
-            # 确保可执行文件有正确的权限
-            chmod 755 "Payload/ECHWorkers.app/ECHWorkers"
-            
-            # 显示 app bundle 结构
-            echo "App bundle 结构:"
-            find "Payload/ECHWorkers.app" -type f | head -20
-            
-            # 确保所有二进制文件都是有效的 Mach-O 格式
-            echo "最终检查所有二进制文件..."
-            find "Payload/ECHWorkers.app" -type f -perm +111 | while read binary; do
-              if file "$binary" | grep -q "Mach-O"; then
-                echo "✅ 有效二进制: $binary"
-                # 确保文件有正确的权限
-                chmod 755 "$binary"
-              else
-                echo "⚠️  非 Mach-O 文件但有执行权限: $binary"
-                # 移除执行权限（如果不是二进制文件）
-                chmod 644 "$binary" 2>/dev/null || true
-              fi
-            done
-            
-            # 验证 framework 二进制文件
-            if [ -d "Payload/ECHWorkers.app/Frameworks" ]; then
-              echo "验证 Frameworks 中的二进制文件..."
-              find "Payload/ECHWorkers.app/Frameworks" -type f -perm +111 | while read binary; do
-                if file "$binary" | grep -q "Mach-O"; then
-                  echo "✅ Framework 二进制: $binary"
-                  chmod 755 "$binary"
-                  otool -h "$binary" > /dev/null 2>&1 || echo "⚠️  警告: $binary 验证失败"
-                fi
-              done
+            if ! echo "$ARCH_INFO" | grep -q "arm64"; then
+              echo "⚠️ 警告: 不是 arm64 架构"
             fi
-            
-            # 列出所有文件类型
-            echo "App bundle 中的文件类型统计:"
-            find "Payload/ECHWorkers.app" -type f -exec file {} \; | sort | uniq -c
-            
-            # 验证 .app bundle 是一个目录（不是文件）
-            if [ ! -d "Payload/ECHWorkers.app" ]; then
-              echo "❌ 错误: .app bundle 不是目录"
-              exit 1
-            fi
-            
-            # 确保 Info.plist 存在
-            if [ ! -f "Payload/ECHWorkers.app/Info.plist" ]; then
-              echo "❌ 错误: Info.plist 不存在"
-              exit 1
-            fi
-            
-            # 【关键】强制所有 Mach-O 二进制文件只包含 arm64 架构
-            echo "🔧 强制提取所有二进制文件的 arm64 架构（移除 fat binary）..."
-            find "Payload/ECHWorkers.app" -type f | while read file; do
-              if file "$file" | grep -q "Mach-O"; then
-                echo "处理: $file"
-                ARCH_INFO=$(lipo -info "$file" 2>&1)
-                echo "  当前架构: $ARCH_INFO"
-                
-                # 只对 fat binary 执行 lipo -thin
-                if echo "$ARCH_INFO" | grep -q "Architectures in the fat file"; then
-                  echo "  检测到 fat binary,提取 arm64..."
-                  if echo "$ARCH_INFO" | grep -q "arm64"; then
-                    lipo "$file" -thin arm64 -output "${file}.tmp" 2>/dev/null
-                    if [ $? -eq 0 ] && [ -f "${file}.tmp" ]; then
-                      mv "${file}.tmp" "$file"
-                      NEW_ARCH=$(lipo -info "$file" 2>&1)
-                      echo "  ✅ 提取后架构: $NEW_ARCH"
-                    else
-                      echo "  ⚠️  lipo 提取失败,保持原文件"
-                      rm -f "${file}.tmp"
-                    fi
-                  else
-                    echo "  ⚠️  警告: fat binary 不包含 arm64 架构"
-                  fi
-                elif echo "$ARCH_INFO" | grep -q "Non-fat file.*arm64"; then
-                  echo "  ✅ 已是纯 arm64 架构,无需处理"
-                else
-                  echo "  ℹ️  单一架构文件: $ARCH_INFO"
-                fi
-              fi
-            done
-            
-            # 最终验证所有二进制都是纯 arm64（非 fat binary）
-            echo "🔍 最终验证所有二进制架构..."
-            HAS_NON_ARM64=0
-            find "Payload/ECHWorkers.app" -type f | while read file; do
-              if file "$file" | grep -q "Mach-O"; then
-                ARCH_INFO=$(lipo -info "$file" 2>&1)
-                if ! echo "$ARCH_INFO" | grep -q "^Non-fat file.*arm64$"; then
-                  if ! echo "$ARCH_INFO" | grep -q "^Architectures in the fat file.*arm64$" || echo "$ARCH_INFO" | grep -q "x86_64\|i386"; then
-                    echo "⚠️  $file: $ARCH_INFO"
-                    HAS_NON_ARM64=1
-                  fi
-                fi
-                echo "  ✅ $file: arm64 only"
-              fi
-            done
           fi
           
           # 获取 commit hash
           COMMIT_HASH="${{ steps.commit.outputs.commit_hash }}"
-          IPA_NAME="${COMMIT_HASH}-ECHWorkers-Swift-unsigned.ipa"
+          IPA_NAME="${COMMIT_HASH}-ECHWorkers-Swift-Pure-unsigned.ipa"
           
-          # 打包为 IPA（使用存储模式，避免压缩损坏二进制文件）
+          # 打包 IPA
           zip -0 -r "../${IPA_NAME}" Payload
           
           cd ..
-          echo "✅ IPA打包完成: ${IPA_NAME}"
+          echo "✅ IPA 打包完成: ${IPA_NAME}"
           ls -lh "${IPA_NAME}"
           
-          # 将 IPA 文件名保存到环境变量
+          # 保存 IPA 文件名
           echo "IPA_NAME=${IPA_NAME}" >> $GITHUB_ENV
       
       - name: Generate changelog
@@ -704,7 +242,7 @@ jobs:
           fi
           
           if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- Swift原生iOS版本首次发布"
+            CHANGELOG="- Swift 纯原生版本首次发布（无 Go 依赖）"
           fi
           
           echo "$CHANGELOG" > CHANGELOG.txt
@@ -716,53 +254,55 @@ jobs:
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ECHWorkers-Swift-iOS
+          name: ECHWorkers-Swift-Pure-iOS
           path: "${{ env.IPA_NAME }}"
       
       - name: Generate release tag
         id: tag
         run: |
-          TAG="ios-swift-v1.2.0-$(date +'%Y%m%d-%H%M%S')"
+          TAG="ios-swift-pure-v2.0.0-$(date +'%Y%m%d-%H%M%S')"
           echo "release_tag=$TAG" >> $GITHUB_OUTPUT
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
-          name: "iOS Swift版本 ${{ steps.tag.outputs.release_tag }}"
+          name: "iOS 纯 Swift 版本 ${{ steps.tag.outputs.release_tag }}"
           body: |
-            # ECH Workers - Swift原生iOS版本
+            # ECH Workers - 纯 Swift 原生版本 2.0
             
-            **✅ 完整ECH功能 + 原生Swift界面**
+            **🎉 完全重写 - 无 Go/gomobile 依赖**
             
             ## 特性
             
-            - ✅ 原生SwiftUI界面
-            - ✅ 完整ECH加密支持 (Go 1.23)
-            - ✅ WebSocket隧道
-            - ✅ SOCKS5代理
-            - ✅ TrollStore完美支持
+            - ✅ 100% 纯 Swift 代码
+            - ✅ 使用 iOS 原生 Network.framework
+            - ✅ ECH 加密支持（iOS 原生实现）
+            - ✅ WebSocket 隧道
+            - ✅ SOCKS5 代理
+            - ✅ 无任何 Framework 依赖
+            - ✅ 单一可执行文件
+            - ✅ 完美适配爱思助手签名
             
             ## 安装方法
             
-            ### TrollStore安装（推荐）
+            ### 爱思助手（推荐）
             1. 下载 `${{ env.IPA_NAME }}`
-            2. 在TrollStore中安装
+            2. 打开爱思助手
+            3. 导入 IPA 并签名安装
+            4. ✅ 应该能成功签名（纯 Swift，无复杂依赖）
+            
+            ### TrollStore
+            1. 下载 IPA
+            2. 在 TrollStore 中安装
             3. 打开应用即可使用
             
-            **Commit**: ${{ steps.commit.outputs.commit_hash }}
+            ## 技术说明
             
-            ### 其他签名工具
-            - AltStore
-            - Sideloadly
-            - 爱思助手
-            
-            ## 使用说明
-            
-            1. 打开应用
-            2. 填写服务器地址
-            3. 点击"启动代理"
-            4. 在系统设置中配置SOCKS5代理：127.0.0.1:30000
+            - **无 Go 代码**: 完全移除了 gomobile 和所有 Go 依赖
+            - **原生 ECH**: 使用 iOS 系统的 TLS 1.3 和 ECH 支持
+            - **纯 Swift**: 所有网络逻辑使用 Network.framework 实现
+            - **单一二进制**: 无 Framework，无动态库，只有主执行文件
             
             ## 更新日志
             
@@ -770,9 +310,9 @@ jobs:
             
             ---
             
-            **版本**: 1.2.0-Swift
-            **最低iOS版本**: 14.0
-            **架构**: arm64
+            **版本**: 2.0.0-Pure-Swift  
+            **最低 iOS 版本**: 14.0  
+            **架构**: arm64  
             **Commit**: ${{ steps.commit.outputs.commit_hash }}
           files: |
             ${{ env.IPA_NAME }}
