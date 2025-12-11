@@ -358,9 +358,9 @@ echo "✅ Xcode项目创建完成"
 
 # 创建ECHWorkers目录并移动源文件
 mkdir -p ECHWorkers
-mv ECHWorkersApp.swift ECHWorkers/ 2>/dev/null || true
-mv ContentView.swift ECHWorkers/ 2>/dev/null || true
-mv ProxyManager.swift ECHWorkers/ 2>/dev/null || true
-mv Info.plist ECHWorkers/ 2>/dev/null || true
+cp ECHWorkersApp.swift ECHWorkers/ 2>/dev/null || true
+cp ContentView.swift ECHWorkers/ 2>/dev/null || true
+cp ProxyManager.swift ECHWorkers/ 2>/dev/null || true
+# Info.plist保持在根目录
 
 echo "✅ 源文件组织完成"
