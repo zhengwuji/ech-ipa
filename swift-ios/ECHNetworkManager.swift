@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import NetworkExtension
+import CFNetwork
 
 enum ProxyMode: String {
     case vpn = "VPN模式"
