@@ -717,6 +717,3 @@ enum NetworkError: LocalizedError {
         }
     }
 }
-
-}
-
