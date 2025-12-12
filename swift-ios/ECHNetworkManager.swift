@@ -35,6 +35,10 @@ class ECHNetworkManager: ObservableObject {
     // 日志回调
     var onLog: ((String) -> Void)?
     
+    // WebSocket delegate (需要保持强引用)
+    private var wsDelegate: WebSocketDelegate?
+
+    
     // MARK: - 主要功能
     
     /// 启动代理服务器
@@ -248,7 +252,9 @@ class ECHNetworkManager: ObservableObject {
         // 创建 URLSession（使用自定义配置支持 TLS 1.3 + ECH + 前置代理）
         let config = getSessionConfiguration()
         
-        let session = URLSession(configuration: config, delegate: WebSocketDelegate(logger: self), delegateQueue: nil)
+        // 创建并保持delegate的强引用
+        wsDelegate = WebSocketDelegate(logger: self)
+        let session = URLSession(configuration: config, delegate: wsDelegate, delegateQueue: nil)
         let wsTask = session.webSocketTask(with: request)
         
         // 启动 WebSocket
