@@ -311,7 +311,18 @@ class ECHNetworkManager: ObservableObject {
                         self?.forwardServerToClient(server: server, client: client)
                     })
                 case .string(let text):
-                    if let data = text.data(using: .utf8) {
+                    // 处理Workers的特殊消息
+                    if text == "CONNECTED" {
+                        self?.log("[WebSocket] 服务器确认连接")
+                        self?.forwardServerToClient(server: server, client: client)
+                    } else if text == "CLOSE" {
+                        self?.log("[WebSocket] 服务器关闭连接")
+                        client.cancel()
+                    } else if text.hasPrefix("ERROR:") {
+                        self?.log("[WebSocket] 服务器错误: \(text)")
+                        client.cancel()
+                    } else if let data = text.data(using: .utf8) {
+                        // 其他文本转为数据
                         client.send(content: data, completion: .contentProcessed { _ in
                             self?.forwardServerToClient(server: server, client: client)
                         })
