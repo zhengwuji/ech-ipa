@@ -334,168 +334,12 @@ class ECHNetworkManager: ObservableObject {
     // MARK: - WebSocket 连接
     
     private func connectToServer(target: String, clientConnection: NWConnection) {
-        if useUpstreamProxy {
-            // 通过前置代理连接
-            connectThroughProxy(target: target, clientConnection: clientConnection)
-        } else {
-            // 直接连接（原有逻辑）
-            connectDirectly(target: target, clientConnection: clientConnection)
-        }
+        // 统一使用 URLSession 处理连接（支持直连和前置代理）
+        connectToECHServer(target: target, clientConnection: clientConnection)
     }
     
-    // 通过前置代理连接
-    private func connectThroughProxy(target: String, clientConnection: NWConnection) {
-        let components = serverAddress.split(separator: ":")
-        guard components.count == 2 else {
-            sendSOCKS5Error(to: clientConnection, code: 0x04)
-            return
-        }
-        
-        let serverHost = String(components[0])
-        guard let serverPort = UInt16(components[1]) else {
-            sendSOCKS5Error(to: clientConnection, code: 0x04)
-            return
-        }
-        
-        // 先连接到前置代理
-        let proxyEndpoint = NWEndpoint.hostPort(
-            host: NWEndpoint.Host(upstreamProxyHost),
-            port: NWEndpoint.Port(rawValue: upstreamProxyPort)!
-        )
-        
-        let params = NWParameters.tcp
-        let proxyConnection = NWConnection(to: proxyEndpoint, using: params)
-        
-        proxyConnection.stateUpdateHandler = { [weak self] state in
-            guard let self = self else { return }
-            
-            switch state {
-            case .ready:
-                self.log("[代理] 已连接到前置代理 \(self.upstreamProxyHost):\(self.upstreamProxyPort)")
-                // 执行 SOCKS5 握手
-                self.performSOCKS5Handshake(
-                    proxyConnection: proxyConnection,
-                    targetHost: serverHost,
-                    targetPort: serverPort,
-                    clientConnection: clientConnection,
-                    originalTarget: target
-                )
-            case .failed(let error):
-                self.log("[错误] 连接前置代理失败: \(error)")
-                self.sendSOCKS5Error(to: clientConnection, code: 0x04)
-            default:
-                break
-            }
-        }
-        
-        proxyConnection.start(queue: queue)
-    }
-    
-    // SOCKS5 握手流程
-    private func performSOCKS5Handshake(
-        proxyConnection: NWConnection,
-        targetHost: String,
-        targetPort: UInt16,
-        clientConnection: NWConnection,
-        originalTarget: String
-    ) {
-        // 步骤 1: 发送方法选择请求
-        let greeting = Data([0x05, 0x01, 0x00]) // VER=5, NMETHODS=1, METHOD=0(无认证)
-        
-        proxyConnection.send(content: greeting, completion: .contentProcessed { [weak self] error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                self.log("[错误] SOCKS5 握手失败: \(error)")
-                self.sendSOCKS5Error(to: clientConnection, code: 0x04)
-                return
-            }
-            
-            // 步骤 2: 接收方法选择响应
-            proxyConnection.receive(minimumIncompleteLength: 2, maximumLength: 2) { data, _, _, error in
-                guard let data = data, data.count == 2, data[0] == 0x05, data[1] == 0x00 else {
-                    self.log("[错误] SOCKS5 认证失败")
-                    self.sendSOCKS5Error(to: clientConnection, code: 0x04)
-                    return
-                }
-                
-                self.log("[代理] SOCKS5 握手成功")
-                
-                // 步骤 3: 发送连接请求
-                self.sendSOCKS5ConnectRequest(
-                    proxyConnection: proxyConnection,
-                    targetHost: targetHost,
-                    targetPort: targetPort,
-                    clientConnection: clientConnection,
-                    originalTarget: originalTarget
-                )
-            }
-        })
-    }
-    
-    // 发送 SOCKS5 连接请求
-    private func sendSOCKS5ConnectRequest(
-        proxyConnection: NWConnection,
-        targetHost: String,
-        targetPort: UInt16,
-        clientConnection: NWConnection,
-        originalTarget: String
-    ) {
-        var request = Data([0x05, 0x01, 0x00, 0x03]) // VER, CMD=CONNECT, RSV, ATYP=DOMAIN
-        request.append(UInt8(targetHost.count))
-        request.append(contentsOf: targetHost.utf8)
-        request.append(UInt8(targetPort >> 8))
-        request.append(UInt8(targetPort & 0xFF))
-        
-        proxyConnection.send(content: request, completion: .contentProcessed { [weak self] error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                self.log("[错误] 发送连接请求失败: \(error)")
-                self.sendSOCKS5Error(to: clientConnection, code: 0x04)
-                return
-            }
-            
-            // 接收连接响应
-            proxyConnection.receive(minimumIncompleteLength: 10, maximumLength: 263) { data, _, _, error in
-                guard let data = data, data.count >= 10, data[0] == 0x05, data[1] == 0x00 else {
-                    self.log("[错误] SOCKS5 连接请求失败")
-                    self.sendSOCKS5Error(to: clientConnection, code: 0x04)
-                    return
-                }
-                
-                self.log("[代理] 已通过代理连接到 \(targetHost):\(targetPort)")
-                
-                // 现在通过代理连接建立 WebSocket
-                self.createWebSocketThroughProxy(
-                    proxyConnection: proxyConnection,
-                    clientConnection: clientConnection,
-                    originalTarget: originalTarget
-                )
-            }
-        })
-    }
-    
-    // 通过代理连接创建 WebSocket
-    private func createWebSocketThroughProxy(
-        proxyConnection: NWConnection,
-        clientConnection: NWConnection,
-        originalTarget: String
-    ) {
-        // 注意：URLSession 的 WebSocket 不支持通过已有的 TCP 连接
-        // 这里我们需要改用直接的 WebSocket 连接
-        // 作为简化，直接发送成功响应并转发数据
-        
-        let successResponse = Data([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
-        clientConnection.send(content: successResponse, completion: .contentProcessed { _ in
-            self.log("[代理] 代理隧道已建立，开始转发数据")
-            // 双向转发：客户端 <-> 代理连接
-            self.bridgeRawConnections(client: clientConnection, server: proxyConnection)
-        })
-    }
-    
-    // 原有的直接连接逻辑
-    private func connectDirectly(target: String, clientConnection: NWConnection) {
+    // 连接到 ECH 服务器 (支持前置代理)
+    private func connectToECHServer(target: String, clientConnection: NWConnection) {
         // 解析服务器地址
         let components = serverAddress.split(separator: ":")
         guard components.count == 2 else {
@@ -521,9 +365,8 @@ class ECHNetworkManager: ObservableObject {
             request.setValue(token, forHTTPHeaderField: "Sec-WebSocket-Protocol")
         }
         
-        // 创建 URLSession（使用自定义配置支持 TLS 1.3 + ECH）
-        let config = URLSessionConfiguration.default
-        config.tlsMinimumSupportedProtocolVersion = .TLSv13
+        // 创建 URLSession（使用自定义配置支持 TLS 1.3 + ECH + 前置代理）
+        let config = getSessionConfiguration()
         
         let session = URLSession(configuration: config)
         let wsTask = session.webSocketTask(with: request)
@@ -640,6 +483,25 @@ class ECHNetworkManager: ObservableObject {
         }
     }
     
+    // MARK: - 辅助方法
+    
+    private func getSessionConfiguration() -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.default
+        config.tlsMinimumSupportedProtocolVersion = .TLSv13
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        
+        if useUpstreamProxy && !upstreamProxyHost.isEmpty {
+            let proxyDict: [AnyHashable: Any] = [
+                kCFNetworkProxiesSOCKSEnable: true,
+                kCFNetworkProxiesSOCKSProxy: upstreamProxyHost,
+                kCFNetworkProxiesSOCKSPort: Int(upstreamProxyPort)
+            ]
+            config.connectionProxyDictionary = proxyDict
+        }
+        
+        return config
+    }
+    
     // MARK: - ECH 配置获取
     
     private func fetchECHConfig() async throws -> Data {
@@ -680,7 +542,7 @@ class ECHNetworkManager: ObservableObject {
         var request = URLRequest(url: dohURL.appendingPathComponent("?dns=\(base64Query)"))
         request.setValue("application/dns-message", forHTTPHeaderField: "Accept")
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await URLSession(configuration: getSessionConfiguration()).data(for: request)
         
         // 解析 DNS 响应
         return try parseECHFromDNS(data)
@@ -693,7 +555,7 @@ class ECHNetworkManager: ObservableObject {
         var request = URLRequest(url: apiURL)
         request.setValue("application/dns-json", forHTTPHeaderField: "Accept")
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await URLSession(configuration: getSessionConfiguration()).data(for: request)
         
         // 解析 JSON 响应
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
