@@ -254,35 +254,30 @@ class ECHNetworkManager: ObservableObject {
         
         // 启动 WebSocket
         wsTask.resume()
-        log("[WebSocket] ⏳ WebSocket 任务已启动，等待连接...")
+        log("[WebSocket] ⏳ WebSocket 任务已启动")
         
-        // 等待一小段时间让连接建立
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        // 直接发送连接请求
+        let connectMessage = target
+        log("[WebSocket] 📤 发送连接请求: \(connectMessage)")
+        
+        wsTask.send(.string(connectMessage)) { [weak self] error in
             guard let self = self else { return }
             
-            // 发送目标地址 - 尝试多种格式
-            let connectMessage = target  // 简化格式：直接发送目标地址
-            self.log("[WebSocket] 📤 发送连接请求: \(connectMessage)")
-            
-            wsTask.send(.string(connectMessage)) { error in
-                if let error = error {
-                    self.log("[错误] ❌ WebSocket 发送失败: \(error.localizedDescription)")
-                    self.log("[错误] 详细信息: \((error as NSError).code) - \((error as NSError).domain)")
-                    self.sendSOCKS5Error(to: clientConnection, code: 0x04)
-                    wsTask.cancel(with: .abnormalClosure, reason: nil)
-                    return
-                }
-                
-                self.log("[WebSocket] ✅ 连接请求已发送: \(target)")
-                
-                // 发送成功响应给SOCKS5客户端
-                let successResponse = Data([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
-                clientConnection.send(content: successResponse, completion: .contentProcessed { _ in
-                    // 开始双向转发
-                    self.log("[代理] 🔄 开始转发数据: \(target)")
-                    self.bridgeConnections(client: clientConnection, server: wsTask)
-                })
+            if let error = error {
+                self.log("[错误] ❌ WebSocket 发送失败: \(error.localizedDescription)")
+                self.sendSOCKS5Error(to: clientConnection, code: 0x04)
+                return
             }
+            
+            self.log("[WebSocket] ✅ 连接请求已发送")
+            
+            // 发送成功响应给SOCKS5客户端
+            let successResponse = Data([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+            clientConnection.send(content: successResponse, completion: .contentProcessed { _ in
+                // 开始双向转发
+                self.log("[代理] 🔄 开始转发数据: \(target)")
+                self.bridgeConnections(client: clientConnection, server: wsTask)
+            })
         }
     }
     
