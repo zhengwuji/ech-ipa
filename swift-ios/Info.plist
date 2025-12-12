@@ -86,7 +86,18 @@
     <array>
         <string>fetch</string>
         <string>processing</string>
+        <string>network-authentication</string>
     </array>
+    <key>com.apple.developer.networking.networkextension</key>
+    <array>
+        <string>packet-tunnel-provider</string>
+        <string>app-proxy-provider</string>
+    </array>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
     <key>DTPlatformName</key>
     <string>iphoneos</string>
     <key>DTSDKName</key>

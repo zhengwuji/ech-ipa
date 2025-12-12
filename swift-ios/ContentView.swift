@@ -40,6 +40,28 @@ struct ContentView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
+                        
+                        // 模式显示
+                        HStack {
+                            Image(systemName: networkManager.currentMode == .vpn ? "shield.fill" : "network")
+                                .foregroundColor(networkManager.currentMode == .vpn ? .green : .blue)
+                            Text("运行模式")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(networkManager.currentMode.rawValue)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(networkManager.currentMode == .vpn ? .green : .blue)
+                            Spacer()
+                        }
+                        
+                        // 使用提示
+                        if networkManager.currentMode == .socks5 && networkManager.isRunning {
+                            Text("💡 提示：在 Shadowrocket 中添加 SOCKS5 服务器 127.0.0.1:\(listenPort)")
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                                .padding(.top, 4)
+                        }
                     }
                     .padding()
                     .background(networkManager.isRunning ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
@@ -233,6 +255,9 @@ struct ContentView: View {
         useUpstreamProxy = defaults.bool(forKey: "useUpstreamProxy")
         upstreamProxyHost = defaults.string(forKey: "upstreamProxyHost") ?? "192.168.1.100"
         upstreamProxyPort = defaults.string(forKey: "upstreamProxyPort") ?? "1082"
+        
+        // 检测 VPN 权限
+        networkManager.checkVPNAvailability()
     }
     
     func saveConfig() {

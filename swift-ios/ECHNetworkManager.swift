@@ -1,9 +1,17 @@
 import Foundation
 import Network
+import NetworkExtension
+
+enum ProxyMode: String {
+    case vpn = "VPN模式"
+    case socks5 = "SOCKS5模式"
+}
 
 /// ECH 网络管理器 - 使用 iOS 原生 Network.framework
 class ECHNetworkManager: ObservableObject {
     @Published var isRunning = false
+    @Published var currentMode: ProxyMode = .socks5
+    @Published var isVPNAvailable: Bool = false
     
     private var listener: NWListener?
     private var connections: [NWConnection] = []
@@ -21,6 +29,10 @@ class ECHNetworkManager: ObservableObject {
     var upstreamProxyHost: String = ""
     var upstreamProxyPort: UInt16 = 1082
     
+    // 运行模式
+    @Published var currentMode: ProxyMode = .socks5
+    @Published var isVPNAvailable: Bool = false
+    
     // ECH 配置缓存
     private var echConfigList: Data?
     private var echConfigExpiry: Date?
@@ -29,6 +41,23 @@ class ECHNetworkManager: ObservableObject {
     var onLog: ((String) -> Void)?
     
     // MARK: - 主要功能
+    
+    // VPN 权限检测
+    func checkVPNAvailability() {
+        NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
+            DispatchQueue.main.async {
+                if error == nil {
+                    self?.isVPNAvailable = true
+                    self?.currentMode = .vpn
+                    self?.log("[系统] ✓ VPN 权限可用")
+                } else {
+                    self?.isVPNAvailable = false
+                    self?.currentMode = .socks5
+                    self?.log("[系统] ⓘ 运行在 SOCKS5 模式")
+                }
+            }
+        }
+    }
     
     /// 启动代理服务器
     func start() throws {
