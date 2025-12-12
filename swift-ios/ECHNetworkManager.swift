@@ -293,7 +293,7 @@ class ECHNetworkManager: ObservableObject {
         targetHost: String,
         targetPort: UInt16,
         clientConnection: NWConnection,
-        original Target: String
+        originalTarget: String
     ) {
         var request = Data([0x05, 0x01, 0x00, 0x03]) // VER, CMD=CONNECT, RSV, ATYP=DOMAIN
         request.append(UInt8(targetHost.count))
