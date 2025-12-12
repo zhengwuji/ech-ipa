@@ -215,12 +215,14 @@ class ECHNetworkManager: ObservableObject {
         // 解析服务器地址
         let components = serverAddress.split(separator: ":")
         guard components.count == 2 else {
+            log("[错误] 服务器地址格式错误: \(serverAddress)")
             sendSOCKS5Error(to: clientConnection, code: 0x04)
             return
         }
         
         let host = String(components[0])
         guard let port = UInt16(components[1]) else {
+            log("[错误] 无效的端口号: \(components[1])")
             sendSOCKS5Error(to: clientConnection, code: 0x04)
             return
         }
@@ -235,40 +237,51 @@ class ECHNetworkManager: ObservableObject {
         // 添加令牌（如果有）
         if !token.isEmpty {
             request.setValue(token, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+            log("[WebSocket] 已设置身份令牌")
         }
         
-        log("[WebSocket] 正在连接到 wss://\(host):\(port)/ ...")
+        log("[WebSocket] 🔗 正在连接到 wss://\(host):\(port)/ ...")
+        if useUpstreamProxy {
+            log("[WebSocket] 📡 通过前置代理: \(upstreamProxyHost):\(upstreamProxyPort)")
+        }
         
         // 创建 URLSession（使用自定义配置支持 TLS 1.3 + ECH + 前置代理）
         let config = getSessionConfiguration()
         
-        let session = URLSession(configuration: config)
+        let session = URLSession(configuration: config, delegate: WebSocketDelegate(logger: self), delegateQueue: nil)
         let wsTask = session.webSocketTask(with: request)
         
         // 启动 WebSocket
         wsTask.resume()
-        log("[WebSocket] WebSocket 任务已启动")
+        log("[WebSocket] ⏳ WebSocket 任务已启动，等待连接...")
         
-        // 发送目标地址（使用Workers期望的格式）
-        let connectMessage = "CONNECT:\(target)|"  // Workers期望的格式
-        log("[WebSocket] 发送连接请求: \(connectMessage)")
-        
-        wsTask.send(.string(connectMessage)) { [weak self] error in
-            if let error = error {
-                self?.log("[错误] WebSocket 连接失败: \(error.localizedDescription)")
-                self?.sendSOCKS5Error(to: clientConnection, code: 0x04)
-                return
+        // 等待一小段时间让连接建立
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self = self else { return }
+            
+            // 发送目标地址 - 尝试多种格式
+            let connectMessage = target  // 简化格式：直接发送目标地址
+            self.log("[WebSocket] 📤 发送连接请求: \(connectMessage)")
+            
+            wsTask.send(.string(connectMessage)) { error in
+                if let error = error {
+                    self.log("[错误] ❌ WebSocket 发送失败: \(error.localizedDescription)")
+                    self.log("[错误] 详细信息: \((error as NSError).code) - \((error as NSError).domain)")
+                    self.sendSOCKS5Error(to: clientConnection, code: 0x04)
+                    wsTask.cancel(with: .abnormalClosure, reason: nil)
+                    return
+                }
+                
+                self.log("[WebSocket] ✅ 连接请求已发送: \(target)")
+                
+                // 发送成功响应给SOCKS5客户端
+                let successResponse = Data([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                clientConnection.send(content: successResponse, completion: .contentProcessed { _ in
+                    // 开始双向转发
+                    self.log("[代理] 🔄 开始转发数据: \(target)")
+                    self.bridgeConnections(client: clientConnection, server: wsTask)
+                })
             }
-            
-            self?.log("[WebSocket] ✓ 已连接并发送目标: \(target)")
-            
-            // 发送成功响应
-            let successResponse = Data([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
-            clientConnection.send(content: successResponse, completion: .contentProcessed { _ in
-                // 开始双向转发
-                self?.log("[代理] 开始转发数据: \(target)")
-                self?.bridgeConnections(client: clientConnection, server: wsTask)
-            })
         }
     }
     
