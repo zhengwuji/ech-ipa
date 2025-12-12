@@ -10,8 +10,6 @@ enum ProxyMode: String {
 /// ECH 网络管理器 - 使用 iOS 原生 Network.framework
 class ECHNetworkManager: ObservableObject {
     @Published var isRunning = false
-    @Published var currentMode: ProxyMode = .socks5
-    @Published var isVPNAvailable: Bool = false
     
     private var listener: NWListener?
     private var connections: [NWConnection] = []
@@ -24,13 +22,11 @@ class ECHNetworkManager: ObservableObject {
     var echDomain: String = "cloudflare-ech.com"
     var dohServer: String = "dns.alidns.com/dns-query"
     
+
     // 前置代理配置
     var useUpstreamProxy: Bool = false
     var upstreamProxyHost: String = ""
     var upstreamProxyPort: UInt16 = 1082
-    
-    // TrollStore 检测
-    @Published var isTrollStoreInstalled: Bool = false
     
     // ECH 配置缓存
     private var echConfigList: Data?
@@ -39,142 +35,7 @@ class ECHNetworkManager: ObservableObject {
     // 日志回调
     var onLog: ((String) -> Void)?
     
-    // 强制 VPN 模式
-    @Published var forceVPNMode: Bool = UserDefaults.standard.bool(forKey: "ForceVPNMode") {
-        didSet {
-            UserDefaults.standard.set(forceVPNMode, forKey: "ForceVPNMode")
-            if forceVPNMode {
-                log("[系统] 用户强制启用了 VPN 模式")
-                checkVPNAvailability()
-            } else {
-                log("[系统] 用户关闭了强制 VPN 模式")
-                checkVPNAvailability()
-            }
-        }
-    }
-    
     // MARK: - 主要功能
-    
-    // TrollStore 检测（增强版）
-    func checkTrollStoreInstalled() -> Bool {
-        log("[诊断] 开始检测 TrollStore...")
-        
-        // 方法1: 检查多个可能的TrollStore路径
-        let trollStorePaths = [
-            "/Applications/TrollStore.app",
-            "/var/containers/Bundle/Application/.TrollStore",
-            "/var/jb/Applications/TrollStore.app",
-            "/private/var/containers/Bundle/Application/.TrollStore",
-            "/usr/lib/TrollStore",
-            "/var/mobile/Applications/TrollStore.app"
-        ]
-        
-        for path in trollStorePaths {
-            let exists = FileManager.default.fileExists(atPath: path)
-            log("[诊断] 检查路径: \(path) - \(exists ? "存在" : "不存在")")
-            if exists {
-                log("[系统] ✓ 检测到 TrollStore: \(path)")
-                return true
-            }
-        }
-        
-        // 方法2: 检查应用自身权限（TrollStore安装的应用通常有特殊权限）
-        let canAccessSystemPaths = FileManager.default.fileExists(atPath: "/Applications")
-        log("[诊断] 可访问/Applications目录: \(canAccessSystemPaths)")
-        
-        // 方法3: 检查是否有持久化VPN权限标记
-        if UserDefaults.standard.bool(forKey: "HasPersistentVPNAccess") {
-            log("[系统] ✓ 检测到持久化VPN权限标记")
-            return true
-        }
-        
-        // 方法4: 检查用户手动标记
-        if forceVPNMode || UserDefaults.standard.bool(forKey: "ForceTrollStoreMode") {
-            log("[系统] ✓ 用户强制启用 VPN/TrollStore 模式")
-            return true
-        }
-        
-        log("[诊断] ✗ 未检测到 TrollStore")
-        return false
-    }
-    
-    // VPN 权限检测（改进版）
-    func checkVPNAvailability() {
-        // 先检测 TrollStore
-        isTrollStoreInstalled = checkTrollStoreInstalled()
-        
-        if isTrollStoreInstalled {
-            log("[系统] 🎉 TrollStore 模式 - 将请求 VPN 权限")
-            // TrollStore模式下，尝试请求VPN权限
-            requestVPNPermission()
-        } else {
-            log("[系统] ⓘ 标准模式 - 使用 SOCKS5 模式")
-            log("[提示] 如果您通过TrollStore安装，可点击'手动请求VPN权限'")
-            isVPNAvailable = false
-            currentMode = .socks5
-        }
-    }
-    
-    // 手动启用TrollStore模式
-    func enableTrollStoreMode() {
-        UserDefaults.standard.set(true, forKey: "ForceTrollStoreMode")
-        log("[系统] 已启用TrollStore模式")
-        checkVPNAvailability()
-    }
-    
-    // 请求 VPN 权限（TrollStore 模式）
-    func requestVPNPermission() {
-        NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                self.log("[VPN] 加载配置失败: \(error.localizedDescription)")
-                self.handleVPNFallback()
-                return
-            }
-            
-            let manager = managers?.first ?? NETunnelProviderManager()
-            
-            // 配置 VPN
-            self.configureVPNTunnel(manager: manager)
-        }
-    }
-    
-    // 配置 VPN 隧道
-    private func configureVPNTunnel(manager: NETunnelProviderManager) {
-        let providerProtocol = NETunnelProviderProtocol()
-        providerProtocol.providerBundleIdentifier = "com.echworkers.client.tunnel"
-        providerProtocol.serverAddress = "ECH Workers"
-        
-        manager.protocolConfiguration = providerProtocol
-        manager.localizedDescription = "ECH Workers VPN"
-        manager.isEnabled = true
-        
-        manager.saveToPreferences { [weak self] error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    self?.log("[VPN] 保存配置失败: \(error.localizedDescription)")
-                    self?.handleVPNFallback()
-                } else {
-                    self?.log("[VPN] ✓ VPN 权限已获取")
-                    self?.isVPNAvailable = true
-                    self?.currentMode = .vpn
-                    // 标记持久化权限
-                    UserDefaults.standard.set(true, forKey: "HasPersistentVPNAccess")
-                }
-            }
-        }
-    }
-    
-    // VPN 权限获取失败时的降级处理
-    private func handleVPNFallback() {
-        DispatchQueue.main.async {
-            self.log("[系统] ⚠️ VPN 权限获取失败，降级到 SOCKS5 模式")
-            self.isVPNAvailable = false
-            self.currentMode = .socks5
-            self.isTrollStoreInstalled = false
-        }
-    }
     
     /// 启动代理服务器
     func start() throws {

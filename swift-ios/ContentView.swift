@@ -32,36 +32,32 @@ struct ContentView: View {
                             Circle()
                                 .fill(networkManager.isRunning ? Color.green : Color.red)
                                 .frame(width: 12, height: 12)
-                            Text(networkManager.isRunning ? "代理运行中" : "代理已停止")
+                            Text(networkManager.isRunning ? "SOCKS5 代理运行中" : "代理已停止")
                                 .font(.headline)
                             Spacer()
                         }
                         if networkManager.isRunning {
-                            Text("SOCKS5: 127.0.0.1:\(listenPort)")
+                            Text("127.0.0.1:\(listenPort)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                        }
-                        
-                        // 模式显示
-                        HStack {
-                            Image(systemName: networkManager.currentMode == .vpn ? "shield.fill" : "network")
-                                .foregroundColor(networkManager.currentMode == .vpn ? .green : .blue)
-                            Text("运行模式")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text(networkManager.currentMode.rawValue)
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(networkManager.currentMode == .vpn ? .green : .blue)
-                            Spacer()
-                        }
-                        
-                        // 使用提示
-                        if networkManager.currentMode == .socks5 && networkManager.isRunning {
-                            Text("💡 提示：在 Shadowrocket 中添加 SOCKS5 服务器 127.0.0.1:\(listenPort)")
-                                .font(.caption2)
-                                .foregroundColor(.orange)
-                                .padding(.top, 4)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("📱 使用方法：")
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.blue)
+                                Text("1. 打开 Shadowrocket 或其他代理工具")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                Text("2. 添加 SOCKS5 服务器: 127.0.0.1:\(listenPort)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                Text("3. 启用代理即可")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.top, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .padding()
@@ -129,75 +125,44 @@ struct ContentView: View {
                     .cornerRadius(12)
                     .shadow(radius: 2)
                     
-                    // VPN 设置
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("运行模式设置")
-                            .font(.headline)
-                        
-                        Toggle("强制启用 VPN 模式", isOn: $networkManager.forceVPNMode)
-                            .padding(.vertical, 5)
-                        
-                        Text("💡 提示：如果自动检测 TrollStore 失败，请开启此选项。开启后应用将尝试直接请求 VPN 权限。")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
-                    .background(Color(UIColor.systemBackground))
-                    .cornerRadius(12)
-                    .shadow(radius: 2)
+
                     
                     // 控制按钮
                     HStack(spacing: 15) {
-                        if networkManager.isVPNAvailable {
-                            // VPN 模式：一键开启
-                            Button(action: networkManager.isRunning ? stopProxy : startVPNMode) {
-                                HStack {
-                                    Image(systemName: networkManager.isRunning ? "stop.circle.fill" : "shield.fill")
-                                    Text(networkManager.isRunning ? "停止VPN" : "启动VPN（一键）")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(networkManager.isRunning ? Color.red : Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
+                        Button(action: startProxy) {
+                            HStack {
+                                Image(systemName: "play.fill")
+                                Text("启动代理")
                             }
-                        } else {
-                            // SOCKS5 模式：启动/停止
-                            Button(action: startProxy) {
-                                HStack {
-                                    Image(systemName: "play.fill")
-                                    Text("启动代理")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(networkManager.isRunning ? Color.gray : Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                            }
-                            .disabled(networkManager.isRunning)
-                            
-                            Button(action: stopProxy) {
-                                HStack {
-                                    Image(systemName: "stop.fill")
-                                    Text("停止代理")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(networkManager.isRunning ? Color.red : Color.gray)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                            }
-                            .disabled(!networkManager.isRunning)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(networkManager.isRunning ? Color.gray : Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
                         }
+                        .disabled(networkManager.isRunning)
+                        
+                        Button(action: stopProxy) {
+                            HStack {
+                                Image(systemName: "stop.fill")
+                                Text("停止代理")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(networkManager.isRunning ? Color.red : Color.gray)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                        .disabled(!networkManager.isRunning)
                     }
                     .padding(.horizontal)
                     
-                    // 配置文件安装按钮（只在 SOCKS5 模式且代理运行时显示）
-                    if !networkManager.isVPNAvailable && networkManager.isRunning {
+                    // 配置文件安装按钮（代理运行时显示）
+                    if networkManager.isRunning {
                         Button(action: shareProxyConfig) {
                             HStack {
                                 Image(systemName: "doc.badge.plus")
-                                Text("📥 安装配置文件（一键设置）")
+                                Text("📥 安装配置文件（系统级代理）")
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -208,7 +173,7 @@ struct ContentView: View {
                         .padding(.horizontal)
                         .padding(.top, 5)
                         
-                        Text("ℹ️ 安装后系统自动使用代理，删除：设置→通用→VPN与设备管理")
+                        Text("ℹ️ 安装后系统自动使用代理。删除：设置→通用→VPN与设备管理")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .padding(.horizontal)
@@ -255,25 +220,49 @@ struct ContentView: View {
                     .shadow(radius: 2)
                     
                     // 使用提示
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("📱 使用提示")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("📱 三种使用方法")
                             .font(.caption)
                             .fontWeight(.bold)
-                        Text("启动代理后，在系统设置中配置SOCKS5代理")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                        Text("设置 → Wi-Fi → HTTP代理 → 手动")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                        Text("服务器: 127.0.0.1 端口: \(listenPort)")
-                            .font(.caption2)
-                            .foregroundColor(.blue)
-                            .fontWeight(.medium)
+                        
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("方法1：Shadowrocket (推荐)")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.blue)
+                            Text("  • 添加 SOCKS5 服务器: 127.0.0.1:\(listenPort)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("方法2：安装配置文件")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.orange)
+                            Text("  • 点击上方'安装配置文件'按钮")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("方法3：手动配置系统代理")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.gray)
+                            Text("  • 设置→Wi-Fi→HTTP代理→手动")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("  • 服务器: 127.0.0.1 端口: \(listenPort)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        
                         Text("✅ 使用 iOS 原生 ECH 加密")
                             .font(.caption2)
                             .foregroundColor(.green)
                             .fontWeight(.medium)
-                            .padding(.top, 2)
+                            .padding(.top, 4)
                     }
                     .padding()
                     .background(Color.blue.opacity(0.1))
@@ -289,16 +278,9 @@ struct ContentView: View {
             loadConfig()
             setupNetworkManager()
             appendLog("[系统] ECH Workers 已启动")
-            appendLog("[系统] 版本: 2.0.0 (纯 Swift + 原生 ECH)")
-            
-            // 显示运行模式
-            if networkManager.isTrollStoreInstalled {
-                appendLog("[系统] 🎉 检测到 TrollStore - VPN 模式可用")
-            } else {
-                appendLog("[系统] 📱 标准模式 - 使用 SOCKS5 + 配置文件")
-            }
-            
+            appendLog("[系统] 版本: 2.1.0 (SOCKS5 + ECH)")
             appendLog("[提示] 填写服务器地址后点击启动代理")
+            appendLog("[提示] 启动后在 Shadowrocket 中添加 SOCKS5 代理")
         }
     }
     
