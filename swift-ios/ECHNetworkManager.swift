@@ -291,6 +291,30 @@ class ECHNetworkManager: ObservableObject {
     // MARK: - ECH 配置获取
     
     private func fetchECHConfig() async throws -> Data {
+        // 尝试方案 1: DNS-over-HTTPS 查询
+        do {
+            return try await fetchECHConfigFromDNS()
+        } catch {
+            log("[警告] DNS 查询失败: \(error.localizedDescription)")
+        }
+        
+        // 尝试方案 2: 从 API 获取
+        do {
+            return try await fetchECHConfigFromAPI()
+        } catch {
+            log("[警告] API 获取失败: \(error.localizedDescription)")
+        }
+        
+        // 方案 3: 使用备用配置
+        if let fallbackConfig = getFallbackECHConfig() {
+            log("[ECH] 使用备用配置")
+            return fallbackConfig
+        }
+        
+        throw NetworkError.invalidDNSResponse
+    }
+    
+    private func fetchECHConfigFromDNS() async throws -> Data {
         // 使用 DNS-over-HTTPS 查询 HTTPS 记录
         let dohURL = URL(string: "https://\(dohServer)")!
         
@@ -308,6 +332,44 @@ class ECHNetworkManager: ObservableObject {
         
         // 解析 DNS 响应
         return try parseECHFromDNS(data)
+    }
+    
+    private func fetchECHConfigFromAPI() async throws -> Data {
+        // 从预配置的 API 获取 ECH 配置
+        // 这里使用 Cloudflare 的 DNS JSON API 作为备用
+        let apiURL = URL(string: "https://cloudflare-dns.com/dns-query?name=\(echDomain)&type=HTTPS")!
+        var request = URLRequest(url: apiURL)
+        request.setValue("application/dns-json", forHTTPHeaderField: "Accept")
+        
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        // 解析 JSON 响应
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let answers = json["Answer"] as? [[String: Any]] {
+            for answer in answers {
+                if let type = answer["type"] as? Int, type == 65,
+                   let dataStr = answer["data"] as? String {
+                    // 解析 HTTPS 记录数据
+                    // 简化处理：假设数据格式为 "priority target params"
+                    log("[ECH] 从 API 获取到 HTTPS 记录")
+                    // 这里需要进一步解析，暂时返回空以触发下一个备用方案
+                }
+            }
+        }
+        
+        throw NetworkError.invalidDNSResponse
+    }
+    
+    private func getFallbackECHConfig() -> Data? {
+        // 返回预配置的 ECH 配置（Cloudflare 公共配置）
+        // 这是一个通用的 Cloudflare ECH 配置，可能需要根据实际情况更新
+        log("[ECH] 尝试使用 Cloudflare 公共 ECH 配置")
+        
+        // 这里应该放置一个已知有效的 ECH 配置
+        // 由于 ECH 配置会定期更新，这只是一个示例
+        // 实际部署时建议定期更新此配置
+        
+        return nil // 暂时返回 nil，让上层处理
     }
     
     private func buildDNSQuery(domain: String, type: UInt16) -> Data {
@@ -335,21 +397,132 @@ class ECHNetworkManager: ObservableObject {
     }
     
     private func parseECHFromDNS(_ response: Data) throws -> Data {
-        // 简化的 DNS 响应解析
-        // 在实际实现中需要完整解析 DNS 响应格式
-        
         guard response.count > 12 else {
             throw NetworkError.invalidDNSResponse
         }
         
-        // 跳过 header 和 question section
-        // 查找 HTTPS 记录中的 ECH 参数（key=5）
+        log("[ECH] DNS 响应已接收，大小: \(response.count) 字节")
         
-        // 这里需要实现完整的 DNS 解析逻辑
-        // 临时返回空数据，实际使用时需要完善
+        var offset = 0
         
-        log("[ECH] DNS 响应解析中...")
-        return Data()
+        // 1. 解析 DNS Header (12 bytes)
+        let answerCount = Int(response[6]) << 8 | Int(response[7])
+        log("[ECH] 解析到 \(answerCount) 条 answer 记录")
+        
+        guard answerCount > 0 else {
+            throw NetworkError.invalidDNSResponse
+        }
+        
+        offset = 12
+        
+        // 2. 跳过 Question Section
+        // 读取 domain name
+        while offset < response.count {
+            let length = Int(response[offset])
+            if length == 0 {
+                offset += 1
+                break
+            }
+            // 检查压缩指针
+            if length & 0xC0 == 0xC0 {
+                offset += 2
+                break
+            }
+            offset += length + 1
+        }
+        
+        // 跳过 QTYPE (2 bytes) 和 QCLASS (2 bytes)
+        offset += 4
+        
+        // 3. 解析 Answer Section
+        for _ in 0..<answerCount {
+            guard offset < response.count else { break }
+            
+            // 跳过 NAME (可能是指针或完整域名)
+            let nameStart = Int(response[offset])
+            if nameStart & 0xC0 == 0xC0 {
+                // 压缩指针
+                offset += 2
+            } else {
+                // 完整域名
+                while offset < response.count {
+                    let len = Int(response[offset])
+                    if len == 0 {
+                        offset += 1
+                        break
+                    }
+                    offset += len + 1
+                }
+            }
+            
+            guard offset + 10 <= response.count else { break }
+            
+            // 读取 TYPE (2 bytes)
+            let recordType = Int(response[offset]) << 8 | Int(response[offset + 1])
+            offset += 2
+            
+            // 跳过 CLASS (2 bytes)
+            offset += 2
+            
+            // 跳过 TTL (4 bytes)
+            offset += 4
+            
+            // 读取 RDLENGTH (2 bytes)
+            let rdLength = Int(response[offset]) << 8 | Int(response[offset + 1])
+            offset += 2
+            
+            guard offset + rdLength <= response.count else { break }
+            
+            // 检查是否是 HTTPS 记录 (TYPE 65)
+            if recordType == 65 {
+                log("[ECH] 找到 HTTPS 记录")
+                
+                let rdataStart = offset
+                let rdataEnd = offset + rdLength
+                
+                // 跳过 Priority (2 bytes)
+                var rdataOffset = rdataStart + 2
+                
+                // 跳过 Target Name
+                while rdataOffset < rdataEnd {
+                    let len = Int(response[rdataOffset])
+                    if len == 0 {
+                        rdataOffset += 1
+                        break
+                    }
+                    if len & 0xC0 == 0xC0 {
+                        rdataOffset += 2
+                        break
+                    }
+                    rdataOffset += len + 1
+                }
+                
+                // 解析 SvcParams
+                while rdataOffset + 4 <= rdataEnd {
+                    let paramKey = Int(response[rdataOffset]) << 8 | Int(response[rdataOffset + 1])
+                    rdataOffset += 2
+                    
+                    let paramLength = Int(response[rdataOffset]) << 8 | Int(response[rdataOffset + 1])
+                    rdataOffset += 2
+                    
+                    guard rdataOffset + paramLength <= rdataEnd else { break }
+                    
+                    // Key=5 是 ECH 配置
+                    if paramKey == 5 {
+                        let echConfig = response[rdataOffset..<(rdataOffset + paramLength)]
+                        log("[ECH] 提取到 ECH 配置，大小: \(echConfig.count) 字节")
+                        return Data(echConfig)
+                    }
+                    
+                    rdataOffset += paramLength
+                }
+            }
+            
+            offset += rdLength
+        }
+        
+        log("[ECH] 未找到 ECH 配置")
+        throw NetworkError.invalidDNSResponse
     }
     
     // MARK: - 辅助函数
