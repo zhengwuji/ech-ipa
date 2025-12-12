@@ -371,16 +371,15 @@ class ECHNetworkManager: ObservableObject {
         if useUpstreamProxy && !upstreamProxyHost.isEmpty {
             log("[代理] 使用前置SOCKS5代理: \(upstreamProxyHost):\(upstreamProxyPort)")
             
-            // 使用更完整的代理配置
+            // 使用字符串配置SOCKS5代理
             let proxyDict: [String: Any] = [
-                kCFNetworkProxiesSOCKSEnable as String: 1,
-                kCFNetworkProxiesSOCKSProxy as String: upstreamProxyHost,
-                kCFNetworkProxiesSOCKSPort as String: Int(upstreamProxyPort),
-                kCFProxyTypeKey as String: kCFProxyTypeSOCKS
+                "SOCKSEnable": 1,
+                "SOCKSProxy": upstreamProxyHost,
+                "SOCKSPort": Int(upstreamProxyPort)
             ]
             config.connectionProxyDictionary = proxyDict
             
-            log("[代理] 代理配置已设置")
+            log("[代理] 代理配置已设置: SOCKS5://\(upstreamProxyHost):\(upstreamProxyPort)")
         } else {
             log("[代理] 直连模式（无前置代理）")
         }
