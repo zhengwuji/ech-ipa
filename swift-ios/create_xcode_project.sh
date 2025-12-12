@@ -34,6 +34,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 		A2000002000000000000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A2000003000000000000001 /* ECHNetworkManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ECHNetworkManager.swift; sourceTree = "<group>"; };
 		A2000004000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000005000000000000001 /* ECHWorkers.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ECHWorkers.entitlements; sourceTree = "<group>"; };
 		A2000006000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -63,6 +64,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 				A2000002000000000000001 /* ContentView.swift */,
 				A2000003000000000000001 /* ECHNetworkManager.swift */,
 				A2000004000000000000001 /* Info.plist */,
+				A2000005000000000000001 /* ECHWorkers.entitlements */,
 				A2000006000000000000001 /* Assets.xcassets */,
 			);
 			path = ECHWorkers;
@@ -365,7 +367,7 @@ cp ECHWorkersApp.swift ECHWorkers/ 2>/dev/null || true
 cp ContentView.swift ECHWorkers/ 2>/dev/null ||  true
 cp ECHNetworkManager.swift ECHWorkers/ 2>/dev/null || true
 cp -r Assets.xcassets ECHWorkers/ 2>/dev/null || true
-# Info.plist保持在根目录
+# Info.plist 和 ECHWorkers.entitlements 保持在根目录
 
 echo "✅ 源文件组织完成"
 echo "项目包含:"
