@@ -660,7 +660,7 @@ class ECHNetworkManager: ObservableObject {
            let answers = json["Answer"] as? [[String: Any]] {
             for answer in answers {
                 if let type = answer["type"] as? Int, type == 65,
-                   let dataStr = answer["data"] as? String {
+                   let _ = answer["data"] as? String {
                     // 解析 HTTPS 记录数据
                     // 简化处理：假设数据格式为 "priority target params"
                     log("[ECH] 从 API 获取到 HTTPS 记录")
@@ -871,3 +871,4 @@ enum NetworkError: LocalizedError {
         }
     }
 }
+
