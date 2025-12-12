@@ -41,28 +41,46 @@ class ECHNetworkManager: ObservableObject {
     
     // MARK: - 主要功能
     
-    // TrollStore 检测
+    // TrollStore 检测（增强版）
     func checkTrollStoreInstalled() -> Bool {
-        // 方法1: 检查是否能访问系统路径（TrollStore特权）
+        log("[诊断] 开始检测 TrollStore...")
+        
+        // 方法1: 检查多个可能的TrollStore路径
         let trollStorePaths = [
             "/Applications/TrollStore.app",
             "/var/containers/Bundle/Application/.TrollStore",
-            "/var/jb/Applications/TrollStore.app"
+            "/var/jb/Applications/TrollStore.app",
+            "/private/var/containers/Bundle/Application/.TrollStore",
+            "/usr/lib/TrollStore",
+            "/var/mobile/Applications/TrollStore.app"
         ]
         
         for path in trollStorePaths {
-            if FileManager.default.fileExists(atPath: path) {
+            let exists = FileManager.default.fileExists(atPath: path)
+            log("[诊断] 检查路径: \(path) - \(exists ? "存在" : "不存在")")
+            if exists {
                 log("[系统] ✓ 检测到 TrollStore: \(path)")
                 return true
             }
         }
         
-        // 方法2: 检查是否有持久化VPN权限标记
+        // 方法2: 检查应用自身权限（TrollStore安装的应用通常有特殊权限）
+        let canAccessSystemPaths = FileManager.default.fileExists(atPath: "/Applications")
+        log("[诊断] 可访问/Applications目录: \(canAccessSystemPaths)")
+        
+        // 方法3: 检查是否有持久化VPN权限标记
         if UserDefaults.standard.bool(forKey: "HasPersistentVPNAccess") {
-            log("[系统] ✓ 检测到持久化VPN权限")
+            log("[系统] ✓ 检测到持久化VPN权限标记")
             return true
         }
         
+        // 方法4: 检查用户手动标记
+        if UserDefaults.standard.bool(forKey: "ForceTrollStoreMode") {
+            log("[系统] ✓ 用户手动启用TrollStore模式")
+            return true
+        }
+        
+        log("[诊断] ✗ 未检测到 TrollStore")
         return false
     }
     
@@ -72,14 +90,22 @@ class ECHNetworkManager: ObservableObject {
         isTrollStoreInstalled = checkTrollStoreInstalled()
         
         if isTrollStoreInstalled {
-            log("[系统] 🎉 TrollStore 模式 - 将使用 VPN 权限")
+            log("[系统] 🎉 TrollStore 模式 - 将请求 VPN 权限")
             // TrollStore模式下，尝试请求VPN权限
             requestVPNPermission()
         } else {
-            log("[系统] ⓘ 标准模式 - 将使用 SOCKS5 + 配置文件")
+            log("[系统] ⓘ 标准模式 - 使用 SOCKS5 模式")
+            log("[提示] 如果您通过TrollStore安装，可点击'手动请求VPN权限'")
             isVPNAvailable = false
             currentMode = .socks5
         }
+    }
+    
+    // 手动启用TrollStore模式
+    func enableTrollStoreMode() {
+        UserDefaults.standard.set(true, forKey: "ForceTrollStoreMode")
+        log("[系统] 已启用TrollStore模式")
+        checkVPNAvailability()
     }
     
     // 请求 VPN 权限（TrollStore 模式）
