@@ -722,3 +722,51 @@ enum NetworkError: LocalizedError {
     }
 }
 
+// MARK: - WebSocket Delegate
+
+class WebSocketDelegate: NSObject, URLSessionWebSocketDelegate {
+    weak var logger: ECHNetworkManager?
+    
+    init(logger: ECHNetworkManager) {
+        self.logger = logger
+    }
+    
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        logger?.log("[WebSocket] ✅ 连接已建立")
+        if let proto = `protocol` {
+            logger?.log("[WebSocket] 协议: \(proto)")
+        }
+    }
+    
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        logger?.log("[WebSocket] ❌ 连接已关闭，代码: \(closeCode.rawValue)")
+        if let reason = reason, let reasonStr = String(data: reason, encoding: .utf8) {
+            logger?.log("[WebSocket] 关闭原因: \(reasonStr)")
+        }
+    }
+    
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            logger?.log("[WebSocket] ⚠️ 任务完成但有错误: \(error.localizedDescription)")
+            logger?.log("[WebSocket] 错误详情: \((error as NSError).domain) - \((error as NSError).code)")
+        }
+    }
+    
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        logger?.log("[TLS] 🔐 收到认证挑战: \(challenge.protectionSpace.authenticationMethod)")
+        
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust {
+            logger?.log("[TLS] 服务器证书验证中...")
+            if let serverTrust = challenge.protectionSpace.serverTrust {
+                let credential = URLCredential(trust: serverTrust)
+                completionHandler(.useCredential, credential)
+                logger?.log("[TLS] ✅ 证书已接受")
+            } else {
+                completionHandler(.performDefaultHandling, nil)
+            }
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+}
+
