@@ -11,9 +11,15 @@ struct ContentView: View {
     @State private var echDomain = "cloudflare-ech.com"
     @State private var dohServer = "dns.alidns.com/dns-query"
     
+    // 前置代理配置
+    @State private var useUpstreamProxy = false
+    @State private var upstreamProxyHost = "192.168.1.100"
+    @State private var upstreamProxyPort = "1082"
+    
     // UI状态
     @State private var logText = ""
     @State private var showAdvanced = false
+    @State private var showProxyConfig = false
     
     var body: some View {
         NavigationView {
@@ -66,6 +72,32 @@ struct ContentView: View {
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                                 .padding(.top, 5)
+                        }
+                        .padding(.top, 10)
+                    }
+                    .padding()
+                    .background(Color(UIColor.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(radius: 2)
+                    
+                    // 前置代理配置
+                    DisclosureGroup("前置代理（上游代理）", isExpanded: $showProxyConfig) {
+                        VStack(spacing: 10) {
+                            Toggle("启用前置代理", isOn: $useUpstreamProxy)
+                                .padding(.vertical, 5)
+                            
+                            if useUpstreamProxy {
+                                ConfigField(label: "代理服务器", text: $upstreamProxyHost, placeholder: "192.168.1.100")
+                                ConfigField(label: "代理端口", text: $upstreamProxyPort, placeholder: "1082")
+                                
+                                Text("💡 提示：用于解决地区封锁问题")
+                                    .font(.caption2)
+                                    .foregroundColor(.blue)
+                                    .padding(.top, 5)
+                                Text("先通过 Shadowrocket 等代理突破，再连接服务器")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                         .padding(.top, 10)
                     }
@@ -196,6 +228,11 @@ struct ContentView: View {
         token = defaults.string(forKey: "token") ?? ""
         echDomain = defaults.string(forKey: "echDomain") ?? "cloudflare-ech.com"
         dohServer = defaults.string(forKey: "dohServer") ?? "dns.alidns.com/dns-query"
+        
+        // 加载前置代理配置
+        useUpstreamProxy = defaults.bool(forKey: "useUpstreamProxy")
+        upstreamProxyHost = defaults.string(forKey: "upstreamProxyHost") ?? "192.168.1.100"
+        upstreamProxyPort = defaults.string(forKey: "upstreamProxyPort") ?? "1082"
     }
     
     func saveConfig() {
@@ -205,6 +242,11 @@ struct ContentView: View {
         defaults.set(token, forKey: "token")
         defaults.set(echDomain, forKey: "echDomain")
         defaults.set(dohServer, forKey: "dohServer")
+        
+        // 保存前置代理配置
+        defaults.set(useUpstreamProxy, forKey: "useUpstreamProxy")
+        defaults.set(upstreamProxyHost, forKey: "upstreamProxyHost")
+        defaults.set(upstreamProxyPort, forKey: "upstreamProxyPort")
         
         appendLog("[系统] 配置已保存")
     }
@@ -228,6 +270,14 @@ struct ContentView: View {
         networkManager.token = token
         networkManager.echDomain = echDomain
         networkManager.dohServer = dohServer
+        
+        // 配置前置代理
+        networkManager.useUpstreamProxy = useUpstreamProxy
+        if useUpstreamProxy, let proxyPort = UInt16(upstreamProxyPort) {
+            networkManager.upstreamProxyHost = upstreamProxyHost
+            networkManager.upstreamProxyPort = proxyPort
+            appendLog("[系统] 将通过前置代理 \(upstreamProxyHost):\(upstreamProxyPort) 连接")
+        }
         
         do {
             try networkManager.start()
