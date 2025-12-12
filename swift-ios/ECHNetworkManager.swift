@@ -98,6 +98,8 @@ class ECHNetworkManager: ObservableObject {
         connections.append(connection)
         connection.start(queue: queue)
         
+        log("[SOCKS5] 新连接已建立")
+        
         // 处理 SOCKS5 握手
         handleSOCKS5Handshake(connection)
     }
@@ -108,6 +110,7 @@ class ECHNetworkManager: ObservableObject {
         // 读取版本和方法数量 (VER + NMETHODS)
         connection.receive(minimumIncompleteLength: 2, maximumLength: 2) { [weak self] data, _, _, error in
             guard let self = self, let data = data, data.count >= 2 else {
+                self?.log("[SOCKS5] 握手失败: 数据不足")
                 connection.cancel()
                 return
             }
@@ -115,7 +118,10 @@ class ECHNetworkManager: ObservableObject {
             let version = data[0]
             let nmethods = Int(data[1])
             
+            self.log("[SOCKS5] 揥手: version=\(version), nmethods=\(nmethods)")
+            
             guard version == 0x05 else {
+                self.log("[SOCKS5] 错误: 不支持的版本 \(version)")
                 connection.cancel()
                 return
             }
@@ -182,13 +188,17 @@ class ECHNetworkManager: ObservableObject {
                 return
             }
             
-            guard data.count >= offset + 2 else { return }
+            guard data.count >= offset + 2 else { 
+                self.log("[SOCKS5] 错误: 目标端口数据不足")
+                return 
+            }
             let targetPort = UInt16(data[offset]) << 8 | UInt16(data[offset+1])
             
             let target = "\(targetHost):\(targetPort)"
             self.log("[SOCKS5] -> \(target)")
             
             // 连接到服务器
+            self.log("[SOCKS5] 开始连接到服务器...")
             self.connectToServer(target: target, clientConnection: connection)
         }
     }
