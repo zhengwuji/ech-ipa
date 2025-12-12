@@ -302,9 +302,6 @@ struct ContentView: View {
         useUpstreamProxy = defaults.bool(forKey: "useUpstreamProxy")
         upstreamProxyHost = defaults.string(forKey: "upstreamProxyHost") ?? "192.168.1.100"
         upstreamProxyPort = defaults.string(forKey: "upstreamProxyPort") ?? "1082"
-        
-        // 检测 VPN 权限
-        networkManager.checkVPNAvailability()
     }
     
     func saveConfig() {
