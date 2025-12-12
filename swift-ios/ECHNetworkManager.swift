@@ -220,12 +220,14 @@ class ECHNetworkManager: ObservableObject {
         
         // 创建 WebSocket 任务
         var request = URLRequest(url: wsURL)
-        request.timeoutInterval = 1060
+        request.timeoutInterval = 30
         
         // 添加令牌（如果有）
         if !token.isEmpty {
             request.setValue(token, forHTTPHeaderField: "Sec-WebSocket-Protocol")
         }
+        
+        log("[WebSocket] 正在连接到 wss://\(host):\(port)/ ...")
         
         // 创建 URLSession（使用自定义配置支持 TLS 1.3 + ECH + 前置代理）
         let config = getSessionConfiguration()
@@ -235,6 +237,7 @@ class ECHNetworkManager: ObservableObject {
         
         // 启动 WebSocket
         wsTask.resume()
+        log("[WebSocket] WebSocket 任务已启动")
         
         // 发送目标地址
         wsTask.send(.string(target)) { [weak self] error in
@@ -244,10 +247,13 @@ class ECHNetworkManager: ObservableObject {
                 return
             }
             
+            self?.log("[WebSocket] ✓ 已连接并发送目标: \(target)")
+            
             // 发送成功响应
             let successResponse = Data([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
             clientConnection.send(content: successResponse, completion: .contentProcessed { _ in
                 // 开始双向转发
+                self?.log("[代理] 开始转发数据: \(target)")
                 self?.bridgeConnections(client: clientConnection, server: wsTask)
             })
         }
