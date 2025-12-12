@@ -1,7 +1,6 @@
 import Foundation
 import Network
 import NetworkExtension
-import CFNetwork
 
 enum ProxyMode: String {
     case vpn = "VPN模式"
@@ -493,9 +492,9 @@ class ECHNetworkManager: ObservableObject {
         
         if useUpstreamProxy && !upstreamProxyHost.isEmpty {
             let proxyDict: [AnyHashable: Any] = [
-                kCFNetworkProxiesSOCKSEnable: true,
-                kCFNetworkProxiesSOCKSProxy: upstreamProxyHost,
-                kCFNetworkProxiesSOCKSPort: Int(upstreamProxyPort)
+                "SOCKSEnable": true,
+                "SOCKSProxy": upstreamProxyHost,
+                "SOCKSPort": Int(upstreamProxyPort)
             ]
             config.connectionProxyDictionary = proxyDict
         }
