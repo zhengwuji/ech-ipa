@@ -39,6 +39,20 @@ class ECHNetworkManager: ObservableObject {
     // 日志回调
     var onLog: ((String) -> Void)?
     
+    // 强制 VPN 模式
+    @Published var forceVPNMode: Bool = UserDefaults.standard.bool(forKey: "ForceVPNMode") {
+        didSet {
+            UserDefaults.standard.set(forceVPNMode, forKey: "ForceVPNMode")
+            if forceVPNMode {
+                log("[系统] 用户强制启用了 VPN 模式")
+                checkVPNAvailability()
+            } else {
+                log("[系统] 用户关闭了强制 VPN 模式")
+                checkVPNAvailability()
+            }
+        }
+    }
+    
     // MARK: - 主要功能
     
     // TrollStore 检测（增强版）
@@ -75,8 +89,8 @@ class ECHNetworkManager: ObservableObject {
         }
         
         // 方法4: 检查用户手动标记
-        if UserDefaults.standard.bool(forKey: "ForceTrollStoreMode") {
-            log("[系统] ✓ 用户手动启用TrollStore模式")
+        if forceVPNMode || UserDefaults.standard.bool(forKey: "ForceTrollStoreMode") {
+            log("[系统] ✓ 用户强制启用 VPN/TrollStore 模式")
             return true
         }
         

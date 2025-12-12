@@ -129,6 +129,23 @@ struct ContentView: View {
                     .cornerRadius(12)
                     .shadow(radius: 2)
                     
+                    // VPN 设置
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("运行模式设置")
+                            .font(.headline)
+                        
+                        Toggle("强制启用 VPN 模式", isOn: $networkManager.forceVPNMode)
+                            .padding(.vertical, 5)
+                        
+                        Text("💡 提示：如果自动检测 TrollStore 失败，请开启此选项。开启后应用将尝试直接请求 VPN 权限。")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .background(Color(UIColor.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(radius: 2)
+                    
                     // 控制按钮
                     HStack(spacing: 15) {
                         if networkManager.isVPNAvailable {
