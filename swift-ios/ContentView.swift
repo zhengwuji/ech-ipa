@@ -359,42 +359,6 @@ struct ContentView: View {
         }
     }
     
-    func startVPNMode() {
-        guard !serverAddress.isEmpty else {
-            appendLog("[错误] 请填写服务器地址")
-            return
-        }
-        
-        guard let port = UInt16(listenPort) else {
-            appendLog("[错误] 无效的端口号")
-            return
-        }
-        
-        saveConfig()
-        
-        // 配置网络管理器
-        networkManager.serverAddress = serverAddress
-        networkManager.listenPort = port
-        networkManager.token = token
-        networkManager.echDomain = echDomain
-        networkManager.dohServer = dohServer
-        
-        // 配置前置代理
-        networkManager.useUpstreamProxy = useUpstreamProxy
-        if useUpstreamProxy, let proxyPort = UInt16(upstreamProxyPort) {
-            networkManager.upstreamProxyHost = upstreamProxyHost
-            networkManager.upstreamProxyPort = proxyPort
-            appendLog("[系统] 将通过前置代理 \(upstreamProxyHost):\(upstreamProxyPort) 连接")
-        }
-        
-        do {
-            try networkManager.start()
-            appendLog("[系统] VPN模式启动中...")
-        } catch {
-            appendLog("[错误] 启动失败: \(error.localizedDescription)")
-        }
-    }
-    
     func stopProxy() {
         networkManager.stop()
     }
