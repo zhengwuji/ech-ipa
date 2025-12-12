@@ -249,8 +249,11 @@ class ECHNetworkManager: ObservableObject {
         wsTask.resume()
         log("[WebSocket] WebSocket 任务已启动")
         
-        // 发送目标地址
-        wsTask.send(.string(target)) { [weak self] error in
+        // 发送目标地址（使用Workers期望的格式）
+        let connectMessage = "CONNECT:\(target)|"  // Workers期望的格式
+        log("[WebSocket] 发送连接请求: \(connectMessage)")
+        
+        wsTask.send(.string(connectMessage)) { [weak self] error in
             if let error = error {
                 self?.log("[错误] WebSocket 连接失败: \(error.localizedDescription)")
                 self?.sendSOCKS5Error(to: clientConnection, code: 0x04)
