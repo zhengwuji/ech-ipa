@@ -401,11 +401,16 @@ struct ContentView: View {
     }
     
     func shareProxyConfig() {
-        // TODO: 配置文件生成功能暂时禁用
-        // ProxyConfigGenerator.swift 需要单独添加到 Xcode 项目中
-        appendLog("[提示] 配置文件生成功能暂时不可用")
-        appendLog("[提示] 请手动配置 SOCKS5 代理: 127.0.0.1:\(listenPort)")
-    }
+        // TODO: 配置文件生成功能暂时禁用
+
+        // ProxyConfigGenerator.swift 需要单独添加到 Xcode 项目中
+
+        appendLog("[提示] 配置文件生成功能暂时不可用")
+
+        appendLog("[提示] 请手动配置 SOCKS5 代理: 127.0.0.1:\(listenPort)")
+
+    }
+
     
     func appendLog(_ message: String) {
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
