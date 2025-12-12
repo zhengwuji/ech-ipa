@@ -434,9 +434,9 @@ class ECHWorkersApp(toga.App):
                 cmd.extend(['-token', server['token']])
             if server['ip']:
                 cmd.extend(['-ip', server['ip']])
-            if server['dns'] and server['dns'] != 'dns.alidns.com/dns-query':
+            if server['dns']:
                 cmd.extend(['-dns', server['dns']])
-            if server['ech'] and server['ech'] != 'cloudflare-ech.com':
+            if server['ech']:
                 cmd.extend(['-ech', server['ech']])
             
             self.append_log(f"[系统] 执行命令: {' '.join(cmd)}\n")
@@ -873,9 +873,9 @@ class ECHWorkersApp(toga.App):
                 cmd.extend(['-token', server['token']])
             if server['ip']:
                 cmd.extend(['-ip', server['ip']])
-            if server['dns'] and server['dns'] != 'dns.alidns.com/dns-query':
+            if server['dns']:
                 cmd.extend(['-dns', server['dns']])
-            if server['ech'] and server['ech'] != 'cloudflare-ech.com':
+            if server['ech']:
                 cmd.extend(['-ech', server['ech']])
             
             self.append_log(f"[系统] 执行命令: {' '.join(cmd)}\n")
