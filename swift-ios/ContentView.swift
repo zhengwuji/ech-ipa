@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @available(iOS 14.0, *)
 struct ContentView: View {
@@ -130,33 +131,72 @@ struct ContentView: View {
                     
                     // 控制按钮
                     HStack(spacing: 15) {
-                        Button(action: startProxy) {
-                            HStack {
-                                Image(systemName: "play.fill")
-                                Text("启动代理")
+                        if networkManager.isVPNAvailable {
+                            // VPN 模式：一键开启
+                            Button(action: networkManager.isRunning ? stopProxy : startVPNMode) {
+                                HStack {
+                                    Image(systemName: networkManager.isRunning ? "stop.circle.fill" : "shield.fill")
+                                    Text(networkManager.isRunning ? "停止VPN" : "启动VPN（一键）")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(networkManager.isRunning ? Color.red : Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(networkManager.isRunning ? Color.gray : Color.green)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                        }
-                        .disabled(networkManager.isRunning)
-                        
-                        Button(action: stopProxy) {
-                            HStack {
-                                Image(systemName: "stop.fill")
-                                Text("停止代理")
+                        } else {
+                            // SOCKS5 模式：启动/停止
+                            Button(action: startProxy) {
+                                HStack {
+                                    Image(systemName: "play.fill")
+                                    Text("启动代理")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(networkManager.isRunning ? Color.gray : Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(networkManager.isRunning ? Color.red : Color.gray)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
+                            .disabled(networkManager.isRunning)
+                            
+                            Button(action: stopProxy) {
+                                HStack {
+                                    Image(systemName: "stop.fill")
+                                    Text("停止代理")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(networkManager.isRunning ? Color.red : Color.gray)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                            }
+                            .disabled(!networkManager.isRunning)
                         }
-                        .disabled(!networkManager.isRunning)
                     }
                     .padding(.horizontal)
+                    
+                    // 配置文件安装按钮（只在 SOCKS5 模式且代理运行时显示）
+                    if !networkManager.isVPNAvailable && networkManager.isRunning {
+                        Button(action: shareProxyConfig) {
+                            HStack {
+                                Image(systemName: "doc.badge.plus")
+                                Text("📥 安装配置文件（一键设置）")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.orange)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 5)
+                        
+                        Text("ℹ️ 安装后系统自动使用代理，删除：设置→通用→VPN与设备管理")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                            .padding(.top, 5)
+                    }
                     
                     Button("保存配置") {
                         saveConfig()
@@ -233,6 +273,14 @@ struct ContentView: View {
             setupNetworkManager()
             appendLog("[系统] ECH Workers 已启动")
             appendLog("[系统] 版本: 2.0.0 (纯 Swift + 原生 ECH)")
+            
+            // 显示运行模式
+            if networkManager.isTrollStoreInstalled {
+                appendLog("[系统] 🎉 检测到 TrollStore - VPN 模式可用")
+            } else {
+                appendLog("[系统] 📱 标准模式 - 使用 SOCKS5 + 配置文件")
+            }
+            
             appendLog("[提示] 填写服务器地址后点击启动代理")
         }
     }
@@ -312,8 +360,83 @@ struct ContentView: View {
         }
     }
     
+    func startVPNMode() {
+        guard !serverAddress.isEmpty else {
+            appendLog("[错误] 请填写服务器地址")
+            return
+        }
+        
+        guard let port = UInt16(listenPort) else {
+            appendLog("[错误] 无效的端口号")
+            return
+        }
+        
+        saveConfig()
+        
+        // 配置网络管理器
+        networkManager.serverAddress = serverAddress
+        networkManager.listenPort = port
+        networkManager.token = token
+        networkManager.echDomain = echDomain
+        networkManager.dohServer = dohServer
+        
+        // 配置前置代理
+        networkManager.useUpstreamProxy = useUpstreamProxy
+        if useUpstreamProxy, let proxyPort = UInt16(upstreamProxyPort) {
+            networkManager.upstreamProxyHost = upstreamProxyHost
+            networkManager.upstreamProxyPort = proxyPort
+            appendLog("[系统] 将通过前置代理 \(upstreamProxyHost):\(upstreamProxyPort) 连接")
+        }
+        
+        do {
+            try networkManager.start()
+            appendLog("[系统] VPN模式启动中...")
+        } catch {
+            appendLog("[错误] 启动失败: \(error.localizedDescription)")
+        }
+    }
+    
     func stopProxy() {
         networkManager.stop()
+    }
+    
+    func shareProxyConfig() {
+        guard let port = UInt16(listenPort) else {
+            appendLog("[错误] 无效的端口号")
+            return
+        }
+        
+        // 生成配置文件
+        guard let configURL = ProxyConfigGenerator.saveConfigToTemporaryFile() else {
+            appendLog("[错误] 生成配置文件失败")
+            return
+        }
+        
+        appendLog("[系统] 配置文件已生成: \(configURL.lastPathComponent)")
+        
+        // 分享配置文件
+        let activityVC = UIActivityViewController(
+            activityItems: [configURL],
+            applicationActivities: nil
+        )
+        
+        // 获取当前的窗口场景
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            // 在 iPad 上设置 popover
+            if let popover = activityVC.popoverPresentationController {
+                popover.sourceView = rootViewController.view
+                popover.sourceRect = CGRect(x: rootViewController.view.bounds.midX,
+                                           y: rootViewController.view.bounds.midY,
+                                           width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+            
+            rootViewController.present(activityVC, animated: true) {
+                self.appendLog("[系统] 请选择'在Safari中打开'或'存储到文件'")
+                self.appendLog("[提示] Safari会自动提示安装配置文件")
+            }
+        }
     }
     
     func appendLog(_ message: String) {
