@@ -418,14 +418,36 @@ struct ContentView: View {
     }
     
     func shareProxyConfig() {
-        // TODO: 配置文件生成功能暂时禁用
-
-        // ProxyConfigGenerator.swift 需要单独添加到 Xcode 项目中
-
-        appendLog("[提示] 配置文件生成功能暂时不可用")
-
-        appendLog("[提示] 请手动配置 SOCKS5 代理: 127.0.0.1:\(listenPort)")
-
+        let configContent = ProxyConfigGenerator.shared.generateMobileConfig(localPort: listenPort)
+        
+        // Create a temporary file
+        let fileName = "ECHWorkers_Proxy.mobileconfig"
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent(fileName)
+        
+        do {
+            try configContent.write(to: fileURL, atomically: true, encoding: .utf8)
+            
+            // Present share sheet
+            let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+            
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                
+                // iPad support
+                if let popover = activityVC.popoverPresentationController {
+                    popover.sourceView = rootVC.view
+                    popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
+                    popover.permittedArrowDirections = []
+                }
+                
+                rootVC.present(activityVC, animated: true, completion: nil)
+            }
+            
+            appendLog("[系统] 配置文件已生成，请选择'保存到文件'或直接安装")
+        } catch {
+            appendLog("[错误] 配置文件生成失败: \(error.localizedDescription)")
+        }
     }
 
     

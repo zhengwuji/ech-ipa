@@ -25,6 +25,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 		A1000001000000000000001 /* ECHWorkersApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000001 /* ECHWorkersApp.swift */; };
 		A1000002000000000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002000000000000001 /* ContentView.swift */; };
 		A1000003000000000000001 /* ECHNetworkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003000000000000001 /* ECHNetworkManager.swift */; };
+		A1000004000000000000001 /* ProxyConfigGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007000000000000001 /* ProxyConfigGenerator.swift */; };
 		A1000006000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000006000000000000001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -36,6 +37,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 		A2000004000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000005000000000000001 /* ECHWorkers.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ECHWorkers.entitlements; sourceTree = "<group>"; };
 		A2000006000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A2000007000000000000001 /* ProxyConfigGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyConfigGenerator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +68,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 				A2000004000000000000001 /* Info.plist */,
 				A2000005000000000000001 /* ECHWorkers.entitlements */,
 				A2000006000000000000001 /* Assets.xcassets */,
+				A2000007000000000000001 /* ProxyConfigGenerator.swift */,
 			);
 			path = ECHWorkers;
 			sourceTree = "<group>";
@@ -150,6 +153,7 @@ cat > "${PROJECT_NAME}.xcodeproj/project.pbxproj" << 'PBXPROJ_END'
 				A1000001000000000000001 /* ECHWorkersApp.swift in Sources */,
 				A1000002000000000000001 /* ContentView.swift in Sources */,
 				A1000003000000000000001 /* ECHNetworkManager.swift in Sources */,
+				A1000004000000000000001 /* ProxyConfigGenerator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -368,6 +372,7 @@ mkdir -p ECHWorkers
 cp ECHWorkersApp.swift ECHWorkers/ 2>/dev/null || true
 cp ContentView.swift ECHWorkers/ 2>/dev/null ||  true
 cp ECHNetworkManager.swift ECHWorkers/ 2>/dev/null || true
+cp ProxyConfigGenerator.swift ECHWorkers/ 2>/dev/null || true
 cp -r Assets.xcassets ECHWorkers/ 2>/dev/null || true
 # Info.plist 和 ECHWorkers.entitlements 保持在根目录
 
@@ -376,6 +381,7 @@ echo "项目包含:"
 echo "  - ECHWorkersApp.swift"
 echo "  - ContentView.swift"
 echo "  - ECH NetworkManager.swift (纯 Swift 网络层)"
+echo "  - ProxyConfigGenerator.swift"
 echo "  - Assets.xcassets"
 echo "  - Info.plist"
 echo ""
