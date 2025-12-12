@@ -127,12 +127,26 @@ jobs:
             fi
             echo "✅ 可执行文件架构验证通过: $APP_ARCH"
             
-            # 清理签名
-            echo "清理残留签名..."
-            codesign --remove-signature "$APP_PATH/ECHWorkers" 2>/dev/null || true
-            codesign --remove-signature "$APP_PATH" 2>/dev/null || true
+            # 清理旧签名并重新签名 (Clean and Re-sign with Entitlements)
+            echo "正在处理签名..."
             rm -rf "$APP_PATH/_CodeSignature" 2>/dev/null || true
             rm -rf "$APP_PATH/embedded.mobileprovision" 2>/dev/null || true
+            
+            # 使用 Entitlements 进行伪签名
+            echo "正在注入 Entitlements..."
+            if [ -f "ECHWorkers.entitlements" ]; then
+                # 使用 ad-hoc 签名注入 entitlements
+                codesign -s - --entitlements "ECHWorkers.entitlements" --force "$APP_PATH/ECHWorkers"
+                echo "✅ 已注入 Entitlements 并完成伪签名"
+                
+                # 验证 entitlements
+                echo "验证签名包含的 Entitlements:"
+                codesign -d --entitlements :- "$APP_PATH/ECHWorkers"
+            else
+                echo "⚠️ 警告: 找不到 ECHWorkers.entitlements 文件，跳过 Entitlements 注入"
+                # 至少做一个基础签名
+                codesign -s - --force "$APP_PATH/ECHWorkers"
+            fi
             
             # 确保可执行权限
             chmod +x "$APP_PATH/ECHWorkers"
@@ -202,7 +216,6 @@ jobs:
           find "Payload/ECHWorkers.app" -name "._*" -delete 2>/dev/null || true
           find "Payload/ECHWorkers.app" -name ".git*" -delete 2>/dev/null || true
           find "Payload/ECHWorkers.app" -type l -delete 2>/dev/null || true
-          find "Payload/ECHWorkers.app" -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true
           find "Payload/ECHWorkers.app" -name "embedded.mobileprovision" -delete 2>/dev/null || true
           
           # 最终验证架构
