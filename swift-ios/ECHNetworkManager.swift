@@ -369,12 +369,20 @@ class ECHNetworkManager: ObservableObject {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         
         if useUpstreamProxy && !upstreamProxyHost.isEmpty {
-            let proxyDict: [AnyHashable: Any] = [
-                "SOCKSEnable": true,
-                "SOCKSProxy": upstreamProxyHost,
-                "SOCKSPort": Int(upstreamProxyPort)
+            log("[代理] 使用前置SOCKS5代理: \(upstreamProxyHost):\(upstreamProxyPort)")
+            
+            // 使用更完整的代理配置
+            let proxyDict: [String: Any] = [
+                kCFNetworkProxiesSOCKSEnable as String: 1,
+                kCFNetworkProxiesSOCKSProxy as String: upstreamProxyHost,
+                kCFNetworkProxiesSOCKSPort as String: Int(upstreamProxyPort),
+                kCFProxyTypeKey as String: kCFProxyTypeSOCKS
             ]
             config.connectionProxyDictionary = proxyDict
+            
+            log("[代理] 代理配置已设置")
+        } else {
+            log("[代理] 直连模式（无前置代理）")
         }
         
         return config
