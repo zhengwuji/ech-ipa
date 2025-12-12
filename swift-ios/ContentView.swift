@@ -401,43 +401,11 @@ struct ContentView: View {
     }
     
     func shareProxyConfig() {
-        guard let port = UInt16(listenPort) else {
-            appendLog("[错误] 无效的端口号")
-            return
-        }
-        
-        // 生成配置文件
-        guard let configURL = ProxyConfigGenerator.saveConfigToTemporaryFile() else {
-            appendLog("[错误] 生成配置文件失败")
-            return
-        }
-        
-        appendLog("[系统] 配置文件已生成: \(configURL.lastPathComponent)")
-        
-        // 分享配置文件
-        let activityVC = UIActivityViewController(
-            activityItems: [configURL],
-            applicationActivities: nil
-        )
-        
-        // 获取当前的窗口场景
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootViewController = windowScene.windows.first?.rootViewController {
-            // 在 iPad 上设置 popover
-            if let popover = activityVC.popoverPresentationController {
-                popover.sourceView = rootViewController.view
-                popover.sourceRect = CGRect(x: rootViewController.view.bounds.midX,
-                                           y: rootViewController.view.bounds.midY,
-                                           width: 0, height: 0)
-                popover.permittedArrowDirections = []
-            }
-            
-            rootViewController.present(activityVC, animated: true) {
-                self.appendLog("[系统] 请选择'在Safari中打开'或'存储到文件'")
-                self.appendLog("[提示] Safari会自动提示安装配置文件")
-            }
-        }
-    }
+        // TODO: 配置文件生成功能暂时禁用
+        // ProxyConfigGenerator.swift 需要单独添加到 Xcode 项目中
+        appendLog("[提示] 配置文件生成功能暂时不可用")
+        appendLog("[提示] 请手动配置 SOCKS5 代理: 127.0.0.1:\(listenPort)")
+    }
     
     func appendLog(_ message: String) {
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
